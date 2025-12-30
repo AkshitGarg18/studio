@@ -11,7 +11,8 @@ export function Header() {
           Streak Keeper
         </h1>
       </div>
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-4">
+        <span className="text-sm text-muted-foreground">motivational quote</span>
         <ThemeToggle />
       </div>
     </header>
