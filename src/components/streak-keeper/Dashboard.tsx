@@ -291,7 +291,6 @@ export function Dashboard() {
           isLoading={isGoalLoading} 
           onGetGoal={handleGetGoal} 
         />
-        <MotivationCard onGetMotivation={handleGetMotivation} />
         <NotificationCard
           isLoading={isNotificationLoading}
           onSimulate={handleSimulateNotification}
