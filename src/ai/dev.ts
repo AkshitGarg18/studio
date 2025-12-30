@@ -5,3 +5,4 @@ import '@/ai/flows/intelligent-streak-loss-notification.ts';
 import '@/ai/flows/personalized-streak-goal.ts';
 import '@/ai/flows/performance-improvement-tips.ts';
 import '@/ai/flows/weekly-performance-review.ts';
+import '@/ai/flows/motivation-of-the-day.ts';

@@ -8,6 +8,7 @@ import { personalizedStreakGoal, type PersonalizedStreakGoalOutput } from '@/ai/
 import { intelligentStreakLossNotification } from '@/ai/flows/intelligent-streak-loss-notification';
 import { getPerformanceTips, type PerformanceTipsOutput } from '@/ai/flows/performance-improvement-tips';
 import { getWeeklyPerformanceReview, type WeeklyPerformanceReviewOutput } from '@/ai/flows/weekly-performance-review';
+import { getMotivationOfTheDay, type MotivationOfTheDayOutput } from '@/ai/flows/motivation-of-the-day';
 
 import { initialStudentData } from '@/lib/mock-data';
 import { StreakCard } from './StreakCard';
@@ -20,6 +21,7 @@ import { Trophy } from 'lucide-react';
 import { SubjectPerformanceChart } from './SubjectPerformanceChart';
 import { WeeklyComparisonCard } from './WeeklyComparisonCard';
 import { WeeklyReportCard } from './WeeklyReportCard';
+import { MotivationCard } from './MotivationCard';
 
 const generateChartData = (progressHistory: ProgressEntry[], days: number) => {
   const data: { date: string; progress: number }[] = [];
@@ -223,6 +225,22 @@ export function Dashboard() {
     }
   };
 
+  const handleGetMotivation = async (): Promise<MotivationOfTheDayOutput> => {
+    try {
+      const result = await getMotivationOfTheDay();
+      return result;
+    } catch (error) {
+      console.error('Error fetching motivation:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Could not generate a motivational quote.',
+      });
+      return { quote: 'Could not fetch a quote at this time. Please try again.', author: 'System' };
+    }
+  };
+
+
   const chartData7Days = generateChartData(studentData.progressHistory, 7);
   const chartData30Days = generateChartData(studentData.progressHistory, 30);
   const longestStreakEmoji = studentData.longestStreak > 10 ? '🏆' : studentData.longestStreak > 5 ? '🏅' : '🎉';
@@ -273,6 +291,7 @@ export function Dashboard() {
           isLoading={isGoalLoading} 
           onGetGoal={handleGetGoal} 
         />
+        <MotivationCard onGetMotivation={handleGetMotivation} />
         <NotificationCard
           isLoading={isNotificationLoading}
           onSimulate={handleSimulateNotification}
