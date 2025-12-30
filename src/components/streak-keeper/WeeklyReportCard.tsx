@@ -8,15 +8,13 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
+  DialogTrigger,
 } from '@/components/ui/dialog';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BookCheck, Sparkles, Lightbulb, Download } from 'lucide-react';
 import type { WeeklyPerformanceReviewOutput } from '@/ai/flows/weekly-performance-review';
 import { ScrollArea } from '../ui/scroll-area';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 
 type WeeklyReportCardProps = {
   onGenerateReport: () => Promise<WeeklyPerformanceReviewOutput>;
@@ -42,6 +40,9 @@ export function WeeklyReportCard({ onGenerateReport }: WeeklyReportCardProps) {
     setIsDownloading(true);
 
     try {
+        const { default: jsPDF } = await import('jspdf');
+        const { default: html2canvas } = await import('html2canvas');
+
         const canvas = await html2canvas(reportContentRef.current, {
             scale: 2, // Higher scale for better quality
             useCORS: true, 
