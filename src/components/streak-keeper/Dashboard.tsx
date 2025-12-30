@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { StudentData, ProgressEntry } from '@/lib/types';
-import { format, subDays, isYesterday, isToday, parseISO, endOfToday } from 'date-fns';
+import { format, subDays, isYesterday, isToday, parseISO, endOfToday, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { personalizedStreakGoal, type PersonalizedStreakGoalOutput } from '@/ai/flows/personalized-streak-goal';
 import { intelligentStreakLossNotification } from '@/ai/flows/intelligent-streak-loss-notification';
@@ -16,6 +16,7 @@ import { NotificationCard } from './NotificationCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Trophy } from 'lucide-react';
 import { SubjectPerformanceChart } from './SubjectPerformanceChart';
+import { WeeklyComparisonCard } from './WeeklyComparisonCard';
 
 const generateChartData = (progressHistory: ProgressEntry[], days: number) => {
   const data: { date: string; progress: number }[] = [];
@@ -160,10 +161,28 @@ export function Dashboard() {
   const chartData30Days = generateChartData(studentData.progressHistory, 30);
   const longestStreakEmoji = studentData.longestStreak > 10 ? '🏆' : studentData.longestStreak > 5 ? '🏅' : '🎉';
 
+  const weeklyStats = useMemo(() => {
+    const today = new Date();
+    const startOfThisWeek = startOfWeek(today, { weekStartsOn: 1 }); // Monday
+    const endOfThisWeek = endOfWeek(today, { weekStartsOn: 1 });
+    const startOfLastWeek = startOfWeek(subDays(today, 7), { weekStartsOn: 1 });
+    const endOfLastWeek = endOfWeek(subDays(today, 7), { weekStartsOn: 1 });
+
+    const currentWeekProgress = studentData.progressHistory
+      .filter(p => isWithinInterval(parseISO(p.date), { start: startOfThisWeek, end: endOfThisWeek }))
+      .reduce((sum, p) => sum + p.progress, 0);
+    
+    const lastWeekProgress = studentData.progressHistory
+      .filter(p => isWithinInterval(parseISO(p.date), { start: startOfLastWeek, end: endOfLastWeek }))
+      .reduce((sum, p) => sum + p.progress, 0);
+
+    return { currentWeekProgress, lastWeekProgress };
+  }, [studentData.progressHistory]);
+
   return (
     <div className="grid grid-cols-1 gap-4 md:gap-8 lg:grid-cols-5">
       <div className="lg:col-span-3 grid auto-rows-min gap-4 md:gap-8">
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-3">
           <StreakCard 
             title="Current Streak" 
             streak={studentData.streak}
@@ -179,6 +198,10 @@ export function Dashboard() {
               <p className="text-xs text-muted-foreground">Your personal best!</p>
             </CardContent>
           </Card>
+          <WeeklyComparisonCard 
+            currentWeekHours={weeklyStats.currentWeekProgress}
+            previousWeekHours={weeklyStats.lastWeekProgress}
+          />
         </div>
         <StreakChart 
             data={chartData7Days} 
