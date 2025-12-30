@@ -6,6 +6,7 @@ import { format, subDays, isYesterday, isToday, parseISO, endOfToday, startOfWee
 import { useToast } from '@/hooks/use-toast';
 import { personalizedStreakGoal, type PersonalizedStreakGoalOutput } from '@/ai/flows/personalized-streak-goal';
 import { intelligentStreakLossNotification } from '@/ai/flows/intelligent-streak-loss-notification';
+import { getPerformanceTips, type PerformanceTipsOutput } from '@/ai/flows/performance-improvement-tips';
 
 import { initialStudentData } from '@/lib/mock-data';
 import { StreakCard } from './StreakCard';
@@ -157,6 +158,29 @@ export function Dashboard() {
     setIsNotificationLoading(false);
   };
 
+  const handleGetPerformanceTips = async (currentWeekProgress: number, previousWeekProgress: number) => {
+    try {
+      const recentActivities = studentData.progressHistory.slice(0, 10).map(p => ({
+        subject: p.subject,
+        activity: p.activity,
+      }));
+      const result = await getPerformanceTips({
+        currentWeekProgress,
+        previousWeekProgress,
+        recentActivities,
+      });
+      return result;
+    } catch (error) {
+      console.error('Error fetching performance tips:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Could not generate performance tips.',
+      });
+      return { tips: ['Sorry, we could not generate tips at this moment. Please try again later.'] };
+    }
+  };
+
   const chartData7Days = generateChartData(studentData.progressHistory, 7);
   const chartData30Days = generateChartData(studentData.progressHistory, 30);
   const longestStreakEmoji = studentData.longestStreak > 10 ? '🏆' : studentData.longestStreak > 5 ? '🏅' : '🎉';
@@ -201,6 +225,7 @@ export function Dashboard() {
           <WeeklyComparisonCard 
             currentWeekHours={weeklyStats.currentWeekProgress}
             previousWeekHours={weeklyStats.lastWeekProgress}
+            onGetTips={handleGetPerformanceTips}
           />
         </div>
         <StreakChart 
