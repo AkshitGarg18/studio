@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import type { StudentData, ProgressEntry, UserProfile } from '@/lib/types';
-import { format, subDays, isYesterday, isToday, parseISO, startOfDay } from 'date-fns';
+import type { StudentData, ProgressEntry } from '@/lib/types';
+import { format, subDays, isYesterday, isToday, parseISO } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { personalizedStreakGoal, type PersonalizedStreakGoalOutput } from '@/ai/flows/personalized-streak-goal';
 import { intelligentStreakLossNotification } from '@/ai/flows/intelligent-streak-loss-notification';
 
+import { initialStudentData } from '@/lib/mock-data';
 import { StreakCard } from './StreakCard';
 import { StreakChart } from './StreakChart';
 import { ProgressForm } from './ProgressForm';
@@ -14,9 +15,6 @@ import { GoalCard } from './GoalCard';
 import { NotificationCard } from './NotificationCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Trophy } from 'lucide-react';
-import { useFirestore, useUser, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
-import { setDocumentNonBlocking, addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
 const generateChartData = (progressHistory: ProgressEntry[]) => {
   const data: { date: string; progress: number }[] = [];
@@ -37,64 +35,30 @@ const generateChartData = (progressHistory: ProgressEntry[]) => {
 };
 
 export function Dashboard() {
-  const [studentData, setStudentData] = useState<StudentData>({
-    id: '',
-    streak: 0,
-    longestStreak: 0,
-    progressHistory: [],
-    notificationHistory: []
-  });
+  const [studentData, setStudentData] = useState<StudentData>(initialStudentData);
   const [goal, setGoal] = useState<PersonalizedStreakGoalOutput | null>(null);
   const [isGoalLoading, setIsGoalLoading] = useState(false);
   const [isNotificationLoading, setIsNotificationLoading] = useState(false);
   const { toast } = useToast();
-  const { user } = useUser();
-  const firestore = useFirestore();
-
-  const userDocRef = useMemoFirebase(() => user ? doc(firestore, 'users', user.uid) : null, [firestore, user]);
-  const progressColRef = useMemoFirebase(() => user ? collection(firestore, 'users', user.uid, 'dailyProgress') : null, [firestore, user]);
-  
-  const { data: progressHistory, isLoading: isProgressLoading } = useCollection<ProgressEntry>(progressColRef);
 
   useEffect(() => {
-    if (user && userDocRef) {
-      const unsub = onSnapshot(userDocRef, (doc) => {
-        if (doc.exists()) {
-          const data = doc.data() as UserProfile;
-          setStudentData(prev => ({
-            ...prev,
-            id: user.uid,
-            streak: data.currentStreak || 0,
-            longestStreak: data.longestStreak || 0,
-          }));
-        } else {
-           // Create user document if it doesn't exist
-           setDocumentNonBlocking(userDocRef, {
-             id: user.uid,
-             email: user.email,
-             name: user.displayName,
-             currentStreak: 0,
-             longestStreak: 0,
-             lastActivityDate: null
-           }, { merge: false });
-        }
-      });
-      return () => unsub();
-    }
-  }, [user, userDocRef]);
-
-
-  useEffect(() => {
-    if (progressHistory) {
-      const sortedHistory = [...progressHistory].sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
-      setStudentData(prev => ({ ...prev, progressHistory: sortedHistory }));
-    }
-  }, [progressHistory]);
+    // Sort progress history on initial load
+    const sortedHistory = [...studentData.progressHistory].sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
+    setStudentData(prev => ({ ...prev, progressHistory: sortedHistory }));
+  }, []);
 
   const handleProgressSubmit = (data: { progress: number; activity: string }) => {
-    if (!user || !progressColRef || !userDocRef) return;
-
     const todayStr = format(new Date(), 'yyyy-MM-dd');
+    
+    // Create a new progress entry
+    const newProgressEntry: ProgressEntry = {
+      date: todayStr,
+      ...data,
+      userId: studentData.id,
+    };
+
+    const updatedHistory = [newProgressEntry, ...studentData.progressHistory];
+
     const lastEntry = studentData.progressHistory.length > 0 ? studentData.progressHistory[0] : null;
 
     let newStreak = studentData.streak;
@@ -106,27 +70,20 @@ export function Dashboard() {
       } else if (isYesterday(lastEntryDate)) {
         newStreak++;
       } else {
-        newStreak = 1;
+        newStreak = 1; // Streak is broken, reset to 1
       }
     } else {
-      newStreak = 1;
+      newStreak = 1; // First entry
     }
 
     const newLongestStreak = Math.max(studentData.longestStreak, newStreak);
-
-    // Add new progress entry to subcollection
-    addDocumentNonBlocking(progressColRef, {
-      date: todayStr,
-      ...data,
-      userId: user.uid,
-    });
     
-    // Update streak info on user document
-    setDocumentNonBlocking(userDocRef, {
-      currentStreak: newStreak,
+    setStudentData(prev => ({
+      ...prev,
+      streak: newStreak,
       longestStreak: newLongestStreak,
-      lastActivityDate: new Date().toISOString(),
-    }, { merge: true });
+      progressHistory: updatedHistory,
+    }));
     
     toast({
       title: "Progress Logged!",
@@ -135,14 +92,13 @@ export function Dashboard() {
   };
   
   const handleGetGoal = async () => {
-    if (!user) return;
     setIsGoalLoading(true);
     try {
       const historicalProgressData = studentData.progressHistory.map(p => ({
         date: p.date,
         progress: p.progress,
       }));
-      const result = await personalizedStreakGoal({ studentId: user.uid, historicalProgressData });
+      const result = await personalizedStreakGoal({ studentId: studentData.id, historicalProgressData });
       setGoal(result);
     } catch (error) {
       console.error('Error fetching personalized goal:', error);
@@ -156,12 +112,11 @@ export function Dashboard() {
   };
   
   const handleSimulateNotification = async () => {
-    if (!user) return;
     setIsNotificationLoading(true);
     try {
       const lastActivity = studentData.progressHistory[0]?.date || format(subDays(new Date(), 3), 'yyyy-MM-dd');
       const result = await intelligentStreakLossNotification({
-        studentId: user.uid,
+        studentId: studentData.id,
         streakLength: studentData.streak,
         lastActivity: lastActivity,
         notificationHistory: [],
@@ -184,12 +139,6 @@ export function Dashboard() {
   };
 
   const chartData = generateChartData(studentData.progressHistory);
-
-  if (isProgressLoading) {
-    return <div className="flex h-full w-full items-center justify-center">
-      <div className="h-16 w-16 animate-spin rounded-full border-4 border-dashed border-primary"></div>
-    </div>
-  }
 
   return (
     <div className="grid grid-cols-1 gap-4 md:gap-8 lg:grid-cols-5">
