@@ -25,7 +25,7 @@ type StreakChartProps = {
 
 const chartConfig = {
   progress: {
-    label: 'Progress (min)',
+    label: 'Progress (hrs)',
     color: 'hsl(var(--primary))',
   },
 } satisfies ChartConfig;
@@ -55,7 +55,7 @@ export function StreakChart({ data, title, dateFormat }: StreakChartProps) {
               tickLine={false}
               axisLine={false}
               tickMargin={10}
-              label={{ value: 'Minutes', angle: -90, position: 'insideLeft', offset: -5 }}
+              label={{ value: 'Hours', angle: -90, position: 'insideLeft', offset: -5 }}
             />
             <Tooltip
               cursor={false}

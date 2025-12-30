@@ -36,7 +36,7 @@ export function GoalCard({ goal, isLoading, onGetGoal }: GoalCardProps) {
           <div className="space-y-2">
             <div className="flex items-center justify-center gap-2">
               <Target className="h-6 w-6 text-accent" />
-              <p className="text-2xl font-bold">{goal.suggestedStreakGoal} minutes/day</p>
+              <p className="text-2xl font-bold">{goal.suggestedStreakGoal} hours/day</p>
             </div>
             <Dialog>
               <DialogTrigger asChild>

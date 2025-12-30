@@ -64,7 +64,7 @@
         },
         "progress": {
           "type": "number",
-          "description": "Minutes studied."
+          "description": "Hours studied."
         }
       },
       "required": [

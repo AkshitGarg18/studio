@@ -19,7 +19,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { PlusCircle } from 'lucide-react';
 
 const formSchema = z.object({
-  progress: z.coerce.number().min(1, 'Progress must be at least 1 minute.'),
+  progress: z.coerce.number().min(0.1, 'Progress must be at least 0.1 hours.').max(24, 'You cannot study more than 24 hours in a day.'),
   activity: z.string().min(3, 'Describe your activity in at least 3 characters.').max(150, 'Description is too long.'),
 });
 
@@ -31,7 +31,7 @@ export function ProgressForm({ onSubmit }: ProgressFormProps) {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      progress: 30,
+      progress: 1,
       activity: '',
     },
   });
@@ -55,9 +55,9 @@ export function ProgressForm({ onSubmit }: ProgressFormProps) {
               name="progress"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Minutes Studied</FormLabel>
+                  <FormLabel>Hours Studied</FormLabel>
                   <FormControl>
-                    <Input type="number" placeholder="e.g., 60" {...field} />
+                    <Input type="number" placeholder="e.g., 1" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
