@@ -5,6 +5,7 @@ export type ProgressEntry = {
   date: string; // YYYY-MM-DD
   progress: number;
   activity: string;
+  subject: string;
   userId: string;
 };
 

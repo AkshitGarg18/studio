@@ -21,6 +21,7 @@ import { PlusCircle } from 'lucide-react';
 const formSchema = z.object({
   progress: z.coerce.number().min(0.1, 'Progress must be at least 0.1 hours.').max(24, 'You cannot study more than 24 hours in a day.'),
   activity: z.string().min(3, 'Describe your activity in at least 3 characters.').max(150, 'Description is too long.'),
+  subject: z.string().min(2, 'Subject must be at least 2 characters.').max(50, 'Subject is too long.'),
 });
 
 type ProgressFormProps = {
@@ -33,12 +34,13 @@ export function ProgressForm({ onSubmit }: ProgressFormProps) {
     defaultValues: {
       progress: 1,
       activity: '',
+      subject: '',
     },
   });
 
   function handleSubmit(values: z.infer<typeof formSchema>) {
     onSubmit(values);
-    form.reset({ ...form.getValues(), activity: '' });
+    form.reset({ ...form.getValues(), activity: '', subject: '' });
   }
 
   return (
@@ -59,6 +61,22 @@ export function ProgressForm({ onSubmit }: ProgressFormProps) {
                   <FormControl>
                     <Input type="number" placeholder="e.g., 1.5" step="0.1" min="0.1" {...field} />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+             <FormField
+              control={form.control}
+              name="subject"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Subject</FormLabel>
+                  <FormControl>
+                    <Input placeholder="e.g., Math" {...field} />
+                  </FormControl>
+                   <FormDescription>
+                    What subject did you study?
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

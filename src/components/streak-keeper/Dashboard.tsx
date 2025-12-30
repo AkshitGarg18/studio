@@ -15,6 +15,7 @@ import { GoalCard } from './GoalCard';
 import { NotificationCard } from './NotificationCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Trophy } from 'lucide-react';
+import { SubjectPerformanceChart } from './SubjectPerformanceChart';
 
 const generateChartData = (progressHistory: ProgressEntry[], days: number) => {
   const data: { date: string; progress: number }[] = [];
@@ -62,7 +63,7 @@ export function Dashboard() {
     setStudentData(prev => ({ ...prev, progressHistory: sortedHistory }));
   }, [studentData.streak]);
 
-  const handleProgressSubmit = (data: { progress: number; activity: string }) => {
+  const handleProgressSubmit = (data: { progress: number; activity: string; subject: string }) => {
     const todayStr = format(new Date(), 'yyyy-MM-dd');
     
     // Create a new progress entry
@@ -193,6 +194,7 @@ export function Dashboard() {
 
       <div className="lg:col-span-2 grid auto-rows-min gap-4 md:gap-8">
         <ProgressForm onSubmit={handleProgressSubmit} />
+        <SubjectPerformanceChart progressHistory={studentData.progressHistory} />
         <GoalCard 
           goal={goal} 
           isLoading={isGoalLoading} 

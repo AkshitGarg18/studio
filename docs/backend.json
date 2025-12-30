@@ -62,6 +62,10 @@
           "type": "string",
           "description": "Description of the learning activities completed on the specified date."
         },
+        "subject": {
+          "type": "string",
+          "description": "The subject studied on the specified date."
+        },
         "progress": {
           "type": "number",
           "description": "Hours studied. Can be a floating-point number."
@@ -71,6 +75,7 @@
         "userId",
         "date",
         "activity",
+        "subject",
         "progress"
       ]
     }
