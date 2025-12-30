@@ -40,16 +40,17 @@ function Chart({ data, period }: { data: ChartData, period: '7d' | '30d' }) {
           tickMargin={10}
           axisLine={false}
           tickFormatter={(value) => {
+            const date = new Date(`${value} ${new Date().getFullYear()}`);
+             if (period === '7d') {
+              return date.toLocaleDateString('en-US', { weekday: 'short' });
+            }
             if (period === '30d') {
-              const date = new Date(`${value} ${new Date().getFullYear()}`);
               if (date.getDate() === 1) {
                 return date.toLocaleDateString('en-US', { month: 'short' });
               }
               return date.toLocaleDateString('en-US', { day: 'numeric' });
             }
-            // For 7 day view, just show date
-            const parts = value.split(' ');
-            return parts.length > 1 ? parts[1] : value;
+            return value;
           }}
         />
         <YAxis
