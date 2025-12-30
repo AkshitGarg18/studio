@@ -155,7 +155,6 @@ export function Dashboard() {
     setIsNotificationLoading(false);
   };
 
-  const chartData30Days = generateChartData(studentData.progressHistory, 30);
   const chartData7Days = generateChartData(studentData.progressHistory, 7);
   const longestStreakEmoji = studentData.longestStreak > 10 ? '🏆' : studentData.longestStreak > 5 ? '🏅' : '🎉';
 
@@ -179,7 +178,7 @@ export function Dashboard() {
             </CardContent>
           </Card>
         </div>
-        <StreakChart data7Days={chartData7Days} data30Days={chartData30Days} />
+        <StreakChart data={chartData7Days} />
       </div>
 
       <div className="lg:col-span-2 grid auto-rows-min gap-4 md:gap-8">
