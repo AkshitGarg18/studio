@@ -1,0 +1,225 @@
+{
+  "entities": {
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User",
+      "type": "object",
+      "description": "Represents a user in the Streak Keeper application.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the User entity."
+        },
+        "googleId": {
+          "type": "string",
+          "description": "Google ID of the user used for authentication via Google Sign-In."
+        },
+        "email": {
+          "type": "string",
+          "description": "Email address of the user.",
+          "format": "email"
+        },
+        "name": {
+          "type": "string",
+          "description": "Full name of the user."
+        }
+      },
+      "required": [
+        "id",
+        "googleId",
+        "email",
+        "name"
+      ]
+    },
+    "DailyProgress": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "DailyProgress",
+      "type": "object",
+      "description": "Represents a user's daily progress and learning activities.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the DailyProgress entry."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to User. (Relationship: User 1:N DailyProgress)"
+        },
+        "date": {
+          "type": "string",
+          "description": "The date for which the progress is recorded.",
+          "format": "date-time"
+        },
+        "activities": {
+          "type": "string",
+          "description": "Description of the learning activities completed on the specified date."
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "date",
+        "activities"
+      ]
+    },
+    "Streak": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Streak",
+      "type": "object",
+      "description": "Represents a user's streak information.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Streak entry."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to User. (Relationship: User 1:N Streak)"
+        },
+        "currentStreak": {
+          "type": "number",
+          "description": "The user's current consecutive streak of progress days."
+        },
+        "longestStreak": {
+          "type": "number",
+          "description": "The user's longest ever streak of progress days."
+        },
+        "lastActivityDate": {
+          "type": "string",
+          "description": "The date of the user's last recorded activity.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "currentStreak",
+        "longestStreak",
+        "lastActivityDate"
+      ]
+    },
+    "Notification": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Notification",
+      "type": "object",
+      "description": "Represents a notification to be sent to the user.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Notification."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to User. (Relationship: User 1:N Notification)"
+        },
+        "message": {
+          "type": "string",
+          "description": "The content of the notification message."
+        },
+        "scheduledTime": {
+          "type": "string",
+          "description": "The date and time when the notification should be sent.",
+          "format": "date-time"
+        },
+        "sent": {
+          "type": "boolean",
+          "description": "A flag indicating whether the notification has been sent."
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "message",
+        "scheduledTime",
+        "sent"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores user profile information.  Path-based ownership ensures only the authenticated user can access their own data.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier for the user."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/dailyProgress/{dailyProgressId}",
+        "definition": {
+          "entityName": "DailyProgress",
+          "schema": {
+            "$ref": "#/backend/entities/DailyProgress"
+          },
+          "description": "Stores daily progress records for each user.  Path-based ownership ensures only the authenticated user can access their own data.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier for the user."
+            },
+            {
+              "name": "dailyProgressId",
+              "description": "The unique identifier for the daily progress record."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/streaks/{streakId}",
+        "definition": {
+          "entityName": "Streak",
+          "schema": {
+            "$ref": "#/backend/entities/Streak"
+          },
+          "description": "Stores streak information for each user. Path-based ownership ensures only the authenticated user can access their own data.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier for the user."
+            },
+            {
+              "name": "streakId",
+              "description": "The unique identifier for the streak record."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/notifications/{notificationId}",
+        "definition": {
+          "entityName": "Notification",
+          "schema": {
+            "$ref": "#/backend/entities/Notification"
+          },
+          "description": "Stores notifications for each user. Path-based ownership ensures only the authenticated user can access their own data.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier for the user."
+            },
+            {
+              "name": "notificationId",
+              "description": "The unique identifier for the notification."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore data structure is designed to support the Streak Keeper application's features, focusing on user progress tracking, streak management, and notifications. The structure is optimized for security, scalability, and debuggability by adhering to the core design principles. User data, progress, streaks, and notifications are stored in separate collections under a user-centric hierarchy to simplify data access and management.  The `users/{userId}/dailyProgress/{dailyProgressId}` path enables atomic operations and simplifies security rules, ensuring that only the authenticated user can access their data.  This design eliminates the need for `get()` calls in security rules, fostering Authorization Independence. The structure supports required QAPs (Queries and Presentations) through segregation; user-specific data is isolated, and the queries can be efficiently targeted to individual users without filtering across multiple users' data.  This design facilitates secure `list` operations, as rules are not filters."
+  }
+}
