@@ -19,6 +19,8 @@ type ChartData = { date: string; progress: number }[];
 
 type StreakChartProps = {
   data: ChartData;
+  title: string;
+  dateFormat: 'eee' | 'dd';
 };
 
 const chartConfig = {
@@ -28,11 +30,11 @@ const chartConfig = {
   },
 } satisfies ChartConfig;
 
-export function StreakChart({ data }: StreakChartProps) {
+export function StreakChart({ data, title, dateFormat }: StreakChartProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>7-Day Progress Report</CardTitle>
+        <CardTitle>{title}</CardTitle>
         <CardDescription>Your learning activity over the last week.</CardDescription>
       </CardHeader>
       <CardContent>
@@ -46,7 +48,7 @@ export function StreakChart({ data }: StreakChartProps) {
               axisLine={false}
               tickFormatter={(value) => {
                 const date = parseISO(value);
-                return format(date, 'eee'); // Format as short day name, e.g., 'Mon'
+                return format(date, dateFormat);
               }}
             />
             <YAxis
