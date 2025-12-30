@@ -7,6 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import { personalizedStreakGoal, type PersonalizedStreakGoalOutput } from '@/ai/flows/personalized-streak-goal';
 import { intelligentStreakLossNotification } from '@/ai/flows/intelligent-streak-loss-notification';
 import { getPerformanceTips, type PerformanceTipsOutput } from '@/ai/flows/performance-improvement-tips';
+import { getWeeklyPerformanceReview, type WeeklyPerformanceReviewOutput } from '@/ai/flows/weekly-performance-review';
 
 import { initialStudentData } from '@/lib/mock-data';
 import { StreakCard } from './StreakCard';
@@ -18,6 +19,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Trophy } from 'lucide-react';
 import { SubjectPerformanceChart } from './SubjectPerformanceChart';
 import { WeeklyComparisonCard } from './WeeklyComparisonCard';
+import { WeeklyReportCard } from './WeeklyReportCard';
 
 const generateChartData = (progressHistory: ProgressEntry[], days: number) => {
   const data: { date: string; progress: number }[] = [];
@@ -181,10 +183,6 @@ export function Dashboard() {
     }
   };
 
-  const chartData7Days = generateChartData(studentData.progressHistory, 7);
-  const chartData30Days = generateChartData(studentData.progressHistory, 30);
-  const longestStreakEmoji = studentData.longestStreak > 10 ? '🏆' : studentData.longestStreak > 5 ? '🏅' : '🎉';
-
   const weeklyStats = useMemo(() => {
     const today = new Date();
     const startOfThisWeek = startOfWeek(today, { weekStartsOn: 1 }); // Monday
@@ -195,13 +193,39 @@ export function Dashboard() {
     const currentWeekProgress = studentData.progressHistory
       .filter(p => isWithinInterval(parseISO(p.date), { start: startOfThisWeek, end: endOfThisWeek }))
       .reduce((sum, p) => sum + p.progress, 0);
+
+    const currentWeekEntries = studentData.progressHistory.filter(p => isWithinInterval(parseISO(p.date), { start: startOfThisWeek, end: endOfThisWeek }));
     
     const lastWeekProgress = studentData.progressHistory
       .filter(p => isWithinInterval(parseISO(p.date), { start: startOfLastWeek, end: endOfLastWeek }))
       .reduce((sum, p) => sum + p.progress, 0);
 
-    return { currentWeekProgress, lastWeekProgress };
+    const lastWeekEntries = studentData.progressHistory.filter(p => isWithinInterval(parseISO(p.date), { start: startOfLastWeek, end: endOfLastWeek }));
+
+    return { currentWeekProgress, lastWeekProgress, currentWeekEntries, lastWeekEntries };
   }, [studentData.progressHistory]);
+
+  const handleGetWeeklyReport = async (): Promise<WeeklyPerformanceReviewOutput> => {
+    try {
+      const result = await getWeeklyPerformanceReview({
+        currentWeekProgress: weeklyStats.currentWeekEntries,
+        previousWeekProgress: weeklyStats.lastWeekEntries,
+      });
+      return result;
+    } catch (error) {
+      console.error('Error fetching weekly report:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Could not generate the weekly report.',
+      });
+      return { reportSummary: 'Error generating report.', nextWeekSuggestions: [] };
+    }
+  };
+
+  const chartData7Days = generateChartData(studentData.progressHistory, 7);
+  const chartData30Days = generateChartData(studentData.progressHistory, 30);
+  const longestStreakEmoji = studentData.longestStreak > 10 ? '🏆' : studentData.longestStreak > 5 ? '🏅' : '🎉';
 
   return (
     <div className="grid grid-cols-1 gap-4 md:gap-8 lg:grid-cols-5">
@@ -243,6 +267,7 @@ export function Dashboard() {
       <div className="lg:col-span-2 grid auto-rows-min gap-4 md:gap-8">
         <ProgressForm onSubmit={handleProgressSubmit} />
         <SubjectPerformanceChart progressHistory={studentData.progressHistory} />
+        <WeeklyReportCard onGenerateReport={handleGetWeeklyReport} />
         <GoalCard 
           goal={goal} 
           isLoading={isGoalLoading} 
