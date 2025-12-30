@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { MotivationOfTheDayOutput } from '@/ai/flows/motivation-of-the-day';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Sparkles } from 'lucide-react';
 
 type MotivationCardProps = {
@@ -11,18 +12,14 @@ type MotivationCardProps = {
 
 export function MotivationCard({ onGetMotivation }: MotivationCardProps) {
   const [motivation, setMotivation] = useState<MotivationOfTheDayOutput | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    const fetchMotivation = async () => {
-      setIsLoading(true);
-      const result = await onGetMotivation();
-      setMotivation(result);
-      setIsLoading(false);
-    };
-
-    fetchMotivation();
-  }, [onGetMotivation]);
+  const handleGetMotivation = async () => {
+    setIsLoading(true);
+    const result = await onGetMotivation();
+    setMotivation(result);
+    setIsLoading(false);
+  };
 
   return (
     <Card>
@@ -40,9 +37,15 @@ export function MotivationCard({ onGetMotivation }: MotivationCardProps) {
           <blockquote className="space-y-2">
             <p className="text-base font-semibold italic">"{motivation.quote}"</p>
             <footer className="text-right text-sm text-muted-foreground">- {motivation.author}</footer>
+            <Button onClick={handleGetMotivation} variant="secondary" size="sm" className="mt-4">
+              Get Another Quote
+            </Button>
           </blockquote>
         ) : (
-          <p>Could not load a quote. Please try again later.</p>
+          <Button onClick={handleGetMotivation}>
+            <Sparkles />
+            Get Quote
+          </Button>
         )}
       </CardContent>
     </Card>
