@@ -1,7 +1,11 @@
+import type { Timestamp } from "firebase/firestore";
+
 export type ProgressEntry = {
+  id?: string;
   date: string; // YYYY-MM-DD
   progress: number;
   activity: string;
+  userId: string;
 };
 
 export type Notification = {
@@ -17,3 +21,12 @@ export type StudentData = {
   progressHistory: ProgressEntry[];
   notificationHistory: Notification[];
 };
+
+export type UserProfile = {
+  id: string;
+  email: string | null;
+  name: string | null;
+  currentStreak: number;
+  longestStreak: number;
+  lastActivityDate: Timestamp | null;
+}

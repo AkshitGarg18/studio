@@ -1,145 +1,21 @@
-/**
- * Core Philosophy: This ruleset enforces a strict user-ownership model. All application
- * data is stored in a user-centric hierarchy, ensuring that users can only access their
- * own information. This creates a secure, private data island for each user.
- *
- * Data Structure: The entire data model is organized under the `/users/{userId}` path.
- * Each user's document serves as the root for their private subcollections, including
- * `dailyProgress`, `streaks`, and `notifications`. This structure is inherently secure
- * and performant for user-specific queries.
- *
- * Key Security Decisions:
- * - User Enumeration is Disallowed: The top-level `/users` collection is not listable,
- *   preventing malicious actors from discovering the list of all users.
- * - Strict Path-Based Ownership: All rules rely on the `{userId}` wildcard in the path
- *   to grant access, meaning a user can only ever interact with documents inside their
- *   own data tree.
- * - Relational Integrity: On document creation, rules validate that the internal `userId`
- *   field matches the `userId` in the document path, ensuring data consistency. This
- *   field is then enforced as immutable.
- *
- * Denormalization for Authorization: This ruleset leverages the Firestore path as the
- * primary source of truth for authorization. By nesting all data under a user's ID, we
- * avoid costly and complex `get()` or `exists()` calls to other documents, resulting in
- * faster and simpler security rules.
- *
- * Structural Segregation: Each data type (e.g., progress, streaks, notifications) is
- * stored in its own dedicated subcollection under the user. This segregation simplifies
- * rules and allows for secure, targeted list operations within each user's data scope.
- */
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions to improve readability and maintainability.
-
-    /**
-     * Checks if the user is authenticated.
-     */
     function isSignedIn() {
       return request.auth != null;
     }
 
-    /**
-     * Checks if the authenticated user's UID matches the requested document's owner ID.
-     */
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    /**
-     * Checks for ownership on an existing document. Used for update and delete operations.
-     */
-    function isExistingOwner(userId) {
-      return isOwner(userId) && resource != null;
-    }
-
-    /**
-     * (Create) Validates that the user document's internal 'id' matches the document ID.
-     */
-    function hasMatchingId(docId) {
-      return request.resource.data.id == docId;
-    }
-
-    /**
-     * (Update) Ensures the user document's internal 'id' field is immutable.
-     */
-    function isIdImmutable() {
-      return request.resource.data.id == resource.data.id;
-    }
-
-    /**
-     * (Create) Validates a subcollection document's 'userId' field matches the parent user's ID.
-     */
-    function hasCorrectUserId(userId) {
-      return request.resource.data.userId == userId;
-    }
-
-    /**
-     * (Update) Ensures a subcollection document's 'userId' field is immutable.
-     */
-    function isUserIdImmutable() {
-      return request.resource.data.userId == resource.data.userId;
-    }
-
-    /**
-     * @description Manages user profile documents. A user can create their own profile
-     *   and can only read, update, or delete their own document.
-     * @path /users/{userId}
-     * @allow A signed-in user with UID 'user123' can (create) their own profile at /users/user123.
-     * @deny A signed-in user 'user456' cannot (get) the profile for 'user123'.
-     * @principle Restricts access to a user's own data tree and prevents user enumeration.
-     */
     match /users/{userId} {
-      allow get: if isOwner(userId);
-      allow list: if false;
-      allow create: if isOwner(userId) && hasMatchingId(userId);
-      allow update: if isExistingOwner(userId) && isIdImmutable();
-      allow delete: if isExistingOwner(userId);
-
-      /**
-       * @description Stores a user's daily progress reports. Only the owner of the user
-       *   profile can create, read, update, or delete their own progress entries.
-       * @path /users/{userId}/dailyProgress/{dailyProgressId}
-       * @allow User 'user123' can (create) a progress report at /users/user123/dailyProgress/day1.
-       * @deny User 'user456' cannot (list) progress reports from /users/user123/dailyProgress.
-       * @principle Enforces path-based ownership for all subcollection operations.
-       */
+      allow read, write: if isOwner(userId);
+      
       match /dailyProgress/{dailyProgressId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && hasCorrectUserId(userId);
-        allow update: if isExistingOwner(userId) && isUserIdImmutable();
-        allow delete: if isExistingOwner(userId);
-      }
-
-      /**
-       * @description Stores a user's learning streaks. Only the owner can manage their
-       *   own streak documents.
-       * @path /users/{userId}/streaks/{streakId}
-       * @allow User 'user123' can (update) their streak record at /users/user123/streaks/mainStreak.
-       * @deny An anonymous user cannot (get) any streak document.
-       * @principle Enforces path-based ownership for all subcollection operations.
-       */
-      match /streaks/{streakId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && hasCorrectUserId(userId);
-        allow update: if isExistingOwner(userId) && isUserIdImmutable();
-        allow delete: if isExistingOwner(userId);
-      }
-
-      /**
-       * @description Stores user-specific notifications. Only the owner can manage their
-       *   own notification documents.
-       * @path /users/{userId}/notifications/{notificationId}
-       * @allow User 'user123' can (delete) a notification at /users/user123/notifications/abc.
-       * @deny User 'user456' cannot (create) a notification at /users/user123/notifications/xyz.
-       * @principle Enforces path-based ownership for all subcollection operations.
-       */
-      match /notifications/{notificationId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && hasCorrectUserId(userId);
-        allow update: if isExistingOwner(userId) && isUserIdImmutable();
-        allow delete: if isExistingOwner(userId);
+        allow read, write: if isOwner(userId);
       }
     }
   }
