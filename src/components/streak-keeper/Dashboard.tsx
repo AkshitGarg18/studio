@@ -24,10 +24,9 @@ const generateChartData = (progressHistory: ProgressEntry[], days: number) => {
   for (let i = days - 1; i >= 0; i--) {
     const date = subDays(today, i);
     const dateString = format(date, 'yyyy-MM-dd');
-    const shortDateString = format(date, 'MMM d');
     
     data.push({
-      date: shortDateString,
+      date: date.toISOString(), // Use ISO string for reliable parsing
       progress: progressMap.get(dateString) || 0,
     });
   }

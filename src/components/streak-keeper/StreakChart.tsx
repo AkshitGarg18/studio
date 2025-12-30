@@ -14,6 +14,7 @@ import {
   type ChartConfig,
 } from '@/components/ui/chart';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { parseISO, format } from 'date-fns';
 
 type ChartData = { date: string; progress: number }[];
 
@@ -40,15 +41,15 @@ function Chart({ data, period }: { data: ChartData, period: '7d' | '30d' }) {
           tickMargin={10}
           axisLine={false}
           tickFormatter={(value) => {
-            const date = new Date(`${value} ${new Date().getFullYear()}`);
+            const date = parseISO(value);
              if (period === '7d') {
-              return date.toLocaleDateString('en-US', { weekday: 'short' });
+              return format(date, 'eee'); // Format as short day name, e.g., 'Mon'
             }
             if (period === '30d') {
               if (date.getDate() === 1) {
-                return date.toLocaleDateString('en-US', { month: 'short' });
+                return format(date, 'MMM');
               }
-              return date.toLocaleDateString('en-US', { day: 'numeric' });
+              return format(date, 'd');
             }
             return value;
           }}
