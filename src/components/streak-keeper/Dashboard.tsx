@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import type { StudentData, ProgressEntry } from '@/lib/types';
-import { format, subDays, isYesterday, isToday, parseISO } from 'date-fns';
+import type { StudentData, ProgressEntry, UserProfile } from '@/lib/types';
+import { format, subDays, isYesterday, isToday, parseISO, startOfDay } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { personalizedStreakGoal, type PersonalizedStreakGoalOutput } from '@/ai/flows/personalized-streak-goal';
 import { intelligentStreakLossNotification } from '@/ai/flows/intelligent-streak-loss-notification';
@@ -15,7 +15,7 @@ import { NotificationCard } from './NotificationCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Trophy } from 'lucide-react';
 import { useFirestore, useUser, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, doc, onSnapshot } from 'firebase/firestore';
+import { collection, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { setDocumentNonBlocking, addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
 const generateChartData = (progressHistory: ProgressEntry[]) => {
@@ -36,8 +36,14 @@ const generateChartData = (progressHistory: ProgressEntry[]) => {
   return data;
 };
 
-export function Dashboard({ initialData }: { initialData: StudentData }) {
-  const [studentData, setStudentData] = useState<StudentData>(initialData);
+export function Dashboard() {
+  const [studentData, setStudentData] = useState<StudentData>({
+    id: '',
+    streak: 0,
+    longestStreak: 0,
+    progressHistory: [],
+    notificationHistory: []
+  });
   const [goal, setGoal] = useState<PersonalizedStreakGoalOutput | null>(null);
   const [isGoalLoading, setIsGoalLoading] = useState(false);
   const [isNotificationLoading, setIsNotificationLoading] = useState(false);
@@ -54,7 +60,7 @@ export function Dashboard({ initialData }: { initialData: StudentData }) {
     if (user && userDocRef) {
       const unsub = onSnapshot(userDocRef, (doc) => {
         if (doc.exists()) {
-          const data = doc.data();
+          const data = doc.data() as UserProfile;
           setStudentData(prev => ({
             ...prev,
             id: user.uid,
@@ -70,7 +76,7 @@ export function Dashboard({ initialData }: { initialData: StudentData }) {
              currentStreak: 0,
              longestStreak: 0,
              lastActivityDate: null
-           }, { merge: true });
+           }, { merge: false });
         }
       });
       return () => unsub();
@@ -119,7 +125,7 @@ export function Dashboard({ initialData }: { initialData: StudentData }) {
     setDocumentNonBlocking(userDocRef, {
       currentStreak: newStreak,
       longestStreak: newLongestStreak,
-      lastActivityDate: todayStr,
+      lastActivityDate: new Date().toISOString(),
     }, { merge: true });
     
     toast({
@@ -129,13 +135,14 @@ export function Dashboard({ initialData }: { initialData: StudentData }) {
   };
   
   const handleGetGoal = async () => {
+    if (!user) return;
     setIsGoalLoading(true);
     try {
       const historicalProgressData = studentData.progressHistory.map(p => ({
         date: p.date,
         progress: p.progress,
       }));
-      const result = await personalizedStreakGoal({ studentId: studentData.id, historicalProgressData });
+      const result = await personalizedStreakGoal({ studentId: user.uid, historicalProgressData });
       setGoal(result);
     } catch (error) {
       console.error('Error fetching personalized goal:', error);
