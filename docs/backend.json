@@ -64,7 +64,7 @@
         },
         "progress": {
           "type": "number",
-          "description": "Hours studied."
+          "description": "Hours studied. Can be a floating-point number."
         }
       },
       "required": [

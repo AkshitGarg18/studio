@@ -57,7 +57,7 @@ export function ProgressForm({ onSubmit }: ProgressFormProps) {
                 <FormItem>
                   <FormLabel>Hours Studied</FormLabel>
                   <FormControl>
-                    <Input type="number" placeholder="e.g., 1" {...field} />
+                    <Input type="number" placeholder="e.g., 1.5" step="0.1" min="0.1" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
