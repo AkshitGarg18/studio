@@ -35,7 +35,7 @@ export function StreakChart({ data, title, dateFormat }: StreakChartProps) {
     <Card>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
-        <CardDescription>Your learning activity over the last week.</CardDescription>
+        <CardDescription>Your learning activity.</CardDescription>
       </CardHeader>
       <CardContent>
         <ChartContainer config={chartConfig} className="h-[250px] w-full">
@@ -56,6 +56,7 @@ export function StreakChart({ data, title, dateFormat }: StreakChartProps) {
               axisLine={false}
               tickMargin={10}
               label={{ value: 'Hours', angle: -90, position: 'insideLeft', offset: -5 }}
+              domain={[0, 24]}
             />
             <Tooltip
               cursor={false}
