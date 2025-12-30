@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import type { StudentData, ProgressEntry } from '@/lib/types';
-import { format, subDays, isYesterday, isToday, parseISO } from 'date-fns';
+import { format, subDays, isYesterday, isToday, parseISO, endOfToday } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { personalizedStreakGoal, type PersonalizedStreakGoalOutput } from '@/ai/flows/personalized-streak-goal';
 import { intelligentStreakLossNotification } from '@/ai/flows/intelligent-streak-loss-notification';
@@ -40,12 +40,28 @@ export function Dashboard() {
   const [isGoalLoading, setIsGoalLoading] = useState(false);
   const [isNotificationLoading, setIsNotificationLoading] = useState(false);
   const { toast } = useToast();
+  const [streakEndTime, setStreakEndTime] = useState<Date | null>(null);
 
   useEffect(() => {
     // Sort progress history on initial load
     const sortedHistory = [...studentData.progressHistory].sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
+    const lastEntry = sortedHistory[0];
+
+    if (studentData.streak > 0 && lastEntry) {
+      const lastEntryDate = parseISO(lastEntry.date);
+      if (isYesterday(lastEntryDate)) {
+        // If the last entry was yesterday, the streak ends at midnight today.
+        setStreakEndTime(endOfToday());
+      } else {
+        // If the last entry was today or earlier, no immediate deadline.
+        setStreakEndTime(null);
+      }
+    } else {
+      setStreakEndTime(null);
+    }
+    
     setStudentData(prev => ({ ...prev, progressHistory: sortedHistory }));
-  }, []);
+  }, [studentData.streak]);
 
   const handleProgressSubmit = (data: { progress: number; activity: string }) => {
     const todayStr = format(new Date(), 'yyyy-MM-dd');
@@ -57,7 +73,7 @@ export function Dashboard() {
       userId: studentData.id,
     };
 
-    const updatedHistory = [newProgressEntry, ...studentData.progressHistory];
+    const updatedHistory = [newProgressEntry, ...studentData.progressHistory.filter(p => p.date !== todayStr)];
 
     const lastEntry = studentData.progressHistory.length > 0 ? studentData.progressHistory[0] : null;
 
@@ -84,6 +100,8 @@ export function Dashboard() {
       longestStreak: newLongestStreak,
       progressHistory: updatedHistory,
     }));
+
+    setStreakEndTime(null); // Progress logged, so remove timer
     
     toast({
       title: "Progress Logged!",
@@ -139,19 +157,24 @@ export function Dashboard() {
   };
 
   const chartData = generateChartData(studentData.progressHistory);
+  const longestStreakEmoji = studentData.longestStreak > 10 ? '🏆' : studentData.longestStreak > 5 ? '🏅' : '🎉';
 
   return (
     <div className="grid grid-cols-1 gap-4 md:gap-8 lg:grid-cols-5">
       <div className="lg:col-span-3 grid auto-rows-min gap-4 md:gap-8">
         <div className="grid gap-4 sm:grid-cols-2">
-          <StreakCard title="Current Streak" streak={studentData.streak} />
+          <StreakCard 
+            title="Current Streak" 
+            streak={studentData.streak}
+            streakEndDate={streakEndTime}
+          />
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Longest Streak</CardTitle>
               <Trophy className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{studentData.longestStreak} days</div>
+              <div className="text-2xl font-bold">{studentData.longestStreak} days {longestStreakEmoji}</div>
               <p className="text-xs text-muted-foreground">Your personal best!</p>
             </CardContent>
           </Card>
