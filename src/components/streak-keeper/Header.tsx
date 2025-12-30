@@ -1,5 +1,6 @@
 'use client';
 import { Flame } from 'lucide-react';
+import { ThemeToggle } from '@/components/theme-toggle';
 
 export function Header() {
   return (
@@ -11,7 +12,7 @@ export function Header() {
         </h1>
       </div>
       <div className="ml-auto">
-        {/* User avatar can be placed here in the future */}
+        <ThemeToggle />
       </div>
     </header>
   );
