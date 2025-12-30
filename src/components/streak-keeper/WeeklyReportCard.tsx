@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -9,11 +9,14 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
 } from '@/components/ui/dialog';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { BookCheck, Sparkles, Lightbulb } from 'lucide-react';
+import { BookCheck, Sparkles, Lightbulb, Download } from 'lucide-react';
 import type { WeeklyPerformanceReviewOutput } from '@/ai/flows/weekly-performance-review';
 import { ScrollArea } from '../ui/scroll-area';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 type WeeklyReportCardProps = {
   onGenerateReport: () => Promise<WeeklyPerformanceReviewOutput>;
@@ -22,7 +25,9 @@ type WeeklyReportCardProps = {
 export function WeeklyReportCard({ onGenerateReport }: WeeklyReportCardProps) {
   const [report, setReport] = useState<WeeklyPerformanceReviewOutput | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const reportContentRef = useRef<HTMLDivElement>(null);
 
   const handleGenerateReport = async () => {
     setIsLoading(true);
@@ -30,6 +35,32 @@ export function WeeklyReportCard({ onGenerateReport }: WeeklyReportCardProps) {
     const result = await onGenerateReport();
     setReport(result);
     setIsLoading(false);
+  };
+  
+  const handleDownloadPdf = async () => {
+    if (!reportContentRef.current) return;
+    setIsDownloading(true);
+
+    try {
+        const canvas = await html2canvas(reportContentRef.current, {
+            scale: 2, // Higher scale for better quality
+            useCORS: true, 
+        });
+
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF({
+            orientation: 'p',
+            unit: 'px',
+            format: [canvas.width, canvas.height],
+        });
+
+        pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+        pdf.save('weekly-performance-report.pdf');
+    } catch (error) {
+        console.error('Error generating PDF:', error);
+    } finally {
+        setIsDownloading(false);
+    }
   };
 
   return (
@@ -60,7 +91,7 @@ export function WeeklyReportCard({ onGenerateReport }: WeeklyReportCardProps) {
                   <span>Generating your report... this may take a moment.</span>
                 </div>
               ) : report ? (
-                <div className="space-y-6">
+                <div ref={reportContentRef} className="space-y-6 p-4 bg-background">
                   <div className="prose prose-sm dark:prose-invert" dangerouslySetInnerHTML={{ __html: report.reportSummary.replace(/\n/g, '<br />') }} />
 
                   <div>
@@ -82,6 +113,23 @@ export function WeeklyReportCard({ onGenerateReport }: WeeklyReportCardProps) {
                 <p>Could not generate the report. Please try again.</p>
               )}
             </ScrollArea>
+            {report && !isLoading && (
+              <DialogFooter>
+                <Button onClick={handleDownloadPdf} disabled={isDownloading}>
+                  {isDownloading ? (
+                    <>
+                      <Sparkles className="animate-pulse" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Download />
+                      Save as PDF
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            )}
           </DialogContent>
         </Dialog>
       </CardContent>
