@@ -16,12 +16,12 @@ import { NotificationCard } from './NotificationCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Trophy } from 'lucide-react';
 
-const generateChartData = (progressHistory: ProgressEntry[]) => {
+const generateChartData = (progressHistory: ProgressEntry[], days: number) => {
   const data: { date: string; progress: number }[] = [];
   const today = new Date();
   const progressMap = new Map(progressHistory.map(p => [p.date, p.progress]));
 
-  for (let i = 29; i >= 0; i--) {
+  for (let i = days - 1; i >= 0; i--) {
     const date = subDays(today, i);
     const dateString = format(date, 'yyyy-MM-dd');
     const shortDateString = format(date, 'MMM d');
@@ -156,7 +156,8 @@ export function Dashboard() {
     setIsNotificationLoading(false);
   };
 
-  const chartData = generateChartData(studentData.progressHistory);
+  const chartData30Days = generateChartData(studentData.progressHistory, 30);
+  const chartData7Days = generateChartData(studentData.progressHistory, 7);
   const longestStreakEmoji = studentData.longestStreak > 10 ? '🏆' : studentData.longestStreak > 5 ? '🏅' : '🎉';
 
   return (
@@ -179,7 +180,7 @@ export function Dashboard() {
             </CardContent>
           </Card>
         </div>
-        <StreakChart data={chartData} />
+        <StreakChart data7Days={chartData7Days} data30Days={chartData30Days} />
       </div>
 
       <div className="lg:col-span-2 grid auto-rows-min gap-4 md:gap-8">
