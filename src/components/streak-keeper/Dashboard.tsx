@@ -16,7 +16,7 @@ import { ProgressForm } from './ProgressForm';
 import { GoalCard } from './GoalCard';
 import { NotificationCard } from './NotificationCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Trophy } from 'lucide-react';
+import { Trophy, CalendarClock } from 'lucide-react';
 import { SubjectPerformanceChart } from './SubjectPerformanceChart';
 import { WeeklyComparisonCard } from './WeeklyComparisonCard';
 import { WeeklyReportCard } from './WeeklyReportCard';
@@ -37,6 +37,26 @@ const generateChartData = (progressHistory: ProgressEntry[], days: number) => {
   }
   return data;
 };
+
+const LastLogCard = ({ date }: { date: string | null }) => {
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium">Last Log Date</CardTitle>
+        <CalendarClock className="h-4 w-4 text-muted-foreground" />
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold">
+          {date ? format(parseISO(date), 'MMM dd, yyyy') : 'No logs yet'}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {date ? 'Your last recorded activity.' : 'Log your progress to start.'}
+        </p>
+      </CardContent>
+    </Card>
+  );
+};
+
 
 export function Dashboard() {
   const [studentData, setStudentData] = useState<StudentData>(initialStudentData);
@@ -226,11 +246,12 @@ export function Dashboard() {
   const chartData7Days = generateChartData(studentData.progressHistory, 7);
   const chartData30Days = generateChartData(studentData.progressHistory, 30);
   const longestStreakEmoji = studentData.longestStreak > 10 ? '🏆' : studentData.longestStreak > 5 ? '🏅' : '🎉';
+  const lastLogDate = studentData.progressHistory.length > 0 ? studentData.progressHistory[0].date : null;
 
   return (
     <div className="grid grid-cols-1 gap-4 md:gap-8 lg:grid-cols-5">
       <div className="lg:col-span-3 grid auto-rows-min gap-4 md:gap-8">
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StreakCard 
             title="Current Streak" 
             streak={studentData.streak}
@@ -246,6 +267,7 @@ export function Dashboard() {
               <p className="text-xs text-muted-foreground">Your personal best!</p>
             </CardContent>
           </Card>
+           <LastLogCard date={lastLogDate} />
           <WeeklyComparisonCard 
             currentWeekHours={weeklyStats.currentWeekProgress}
             previousWeekHours={weeklyStats.lastWeekProgress}
