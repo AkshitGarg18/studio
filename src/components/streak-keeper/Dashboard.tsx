@@ -131,24 +131,16 @@ export function Dashboard() {
 
     const todayStr = format(new Date(), 'yyyy-MM-dd');
     const todayEntries = progressHistory.filter(p => format(parseISO(p.date), 'yyyy-MM-dd') === todayStr);
-    const existingTodayEntry = todayEntries.length > 0 ? todayEntries[0] : null;
 
     let newStreak = userProfile.currentStreak;
     const lastEntry = sortedHistory.length > 0 ? sortedHistory[0] : null;
 
-    let finalProgressHours = data.progress;
-    if (existingTodayEntry) {
-        finalProgressHours += existingTodayEntry.progress;
-    }
-
-    // Streak logic
-    if (!lastEntry || !isToday(parseISO(lastEntry.date))) { // First log of the day
+    // Streak logic - only increment streak on the *first* log of a new day
+    if (todayEntries.length === 0) {
         if (lastEntry && isYesterday(parseISO(lastEntry.date))) {
-            newStreak++;
-        } else if (lastEntry && !isYesterday(parseISO(lastEntry.date))) {
-            newStreak = 1;
-        } else if (!lastEntry) {
-            newStreak = 1;
+            newStreak++; // Continue streak
+        } else if (!lastEntry || (lastEntry && !isToday(parseISO(lastEntry.date)))) {
+            newStreak = 1; // Start a new streak
         }
     }
     
@@ -168,17 +160,16 @@ export function Dashboard() {
         xpForNextLevel = getXpForLevel(newLevel + 1);
     }
 
-    // --- Badge Calculation Logic ---
-    const allProgressEntriesForBadges = [...progressHistory];
-    if (existingTodayEntry && existingTodayEntry.id) {
-        const index = allProgressEntriesForBadges.findIndex(p => p.id === existingTodayEntry.id);
-        if (index !== -1) {
-            allProgressEntriesForBadges[index] = { ...allProgressEntriesForBadges[index], progress: finalProgressHours };
-        }
-    } else {
-        allProgressEntriesForBadges.unshift({ ...data, date: todayStr, userId: user.uid, id: 'temp', progress: finalProgressHours });
-    }
+    // Always create a new progress entry for each submission
+    const newProgressEntry = { 
+        ...data, 
+        date: todayStr, 
+        userId: user.uid 
+    };
+    addDocumentNonBlocking(progressHistoryRef, newProgressEntry);
 
+    // --- Badge Calculation Logic ---
+    const allProgressEntriesForBadges = [...progressHistory, { ...newProgressEntry, id: 'temp' }];
     const preUpdateData = { ...userProfile, currentStreak: newStreak, longestStreak: newLongestStreak, level: newLevel, xp: newXp, badges: userProfile.badges };
     const newlyAwardedBadges: Badge[] = [];
     let updatedBadges = [...userProfile.badges];
@@ -204,19 +195,6 @@ export function Dashboard() {
     }
 
     // --- Firestore Update Logic ---
-    if (existingTodayEntry && existingTodayEntry.id) {
-        const progressDocRef = doc(firestore, `users/${user.uid}/progress`, existingTodayEntry.id);
-        const updatedProgressData = {
-            progress: finalProgressHours,
-            activity: `${existingTodayEntry.activity}; ${data.activity}`, // Combine activities
-            subject: data.subject, // Can decide how to handle subject updates, here we just take the new one
-        };
-        updateDocumentNonBlocking(progressDocRef, updatedProgressData);
-    } else {
-        const newProgressEntry = { ...data, date: todayStr, userId: user.uid };
-        addDocumentNonBlocking(progressHistoryRef, newProgressEntry);
-    }
-
     const userProfileUpdate = {
         currentStreak: newStreak,
         longestStreak: newLongestStreak,
@@ -233,7 +211,7 @@ export function Dashboard() {
 
     toast({
         title: "Progress Logged!",
-        description: `You've earned ${addedXp} XP.`,
+        description: `You've earned ${addedXp} XP for studying ${data.subject}.`,
     });
 };
 
