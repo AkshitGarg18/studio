@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import type { ProgressEntry, UserProfile, Badge } from '@/lib/types';
+import type { ProgressEntry, UserProfile, Badge, Notification } from '@/lib/types';
 import { format, subDays, isYesterday, isToday, parseISO, endOfToday, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { useUser, useFirestore, useDoc, useCollection, useMemoFirebase } from '@/firebase';
@@ -21,6 +21,10 @@ import { LevelCard } from './LevelCard';
 import { Skeleton } from '../ui/skeleton';
 import { ShareBadgeDialog } from './ShareBadgeDialog';
 import { Button } from '../ui/button';
+import { intelligentStreakLossNotification, type NotificationInput, type NotificationOutput } from '@/ai/flows/intelligent-streak-loss-notification';
+import { NotificationCard } from './NotificationCard';
+import { GoalCard } from './GoalCard';
+import { personalizedStreakGoal, type PersonalizedStreakGoalInput, type PersonalizedStreakGoalOutput } from '@/ai/flows/personalized-streak-goal';
 
 const generateChartData = (progressHistory: ProgressEntry[], days: number) => {
   const data: { date: string; progress: number }[] = [];
@@ -66,6 +70,9 @@ export function Dashboard() {
   const [streakEndTime, setStreakEndTime] = useState<Date | null>(null);
   const [selectedBadge, setSelectedBadge] = useState<Badge | null>(null);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [isSimulatingNotification, setIsSimulatingNotification] = useState(false);
+  const [goal, setGoal] = useState<PersonalizedStreakGoalOutput | null>(null);
+  const [isGoalLoading, setIsGoalLoading] = useState(false);
 
   const userProfileRef = useMemoFirebase(() => {
     if (!firestore || !user) return null;
@@ -146,7 +153,6 @@ export function Dashboard() {
       });
     }
     
-    // Check for badge unlocks before updating the database state
     const allProgressEntries = [...sortedHistory, { ...data, date: todayStr, userId: user.uid }];
     const preUpdateData = { ...userProfile, currentStreak: newStreak, longestStreak: newLongestStreak, level: newLevel, xp: newXp };
 
@@ -173,7 +179,6 @@ export function Dashboard() {
       });
     }
     
-    // Create new progress entry
     const newProgressEntry = {
       date: todayStr,
       ...data,
@@ -183,7 +188,6 @@ export function Dashboard() {
     const newProgressDocRef = doc(collection(firestore, `users/${user.uid}/progress`));
     setDocumentNonBlocking(newProgressDocRef, newProgressEntry, { merge: true });
 
-    // Update user profile
     const userProfileUpdate = {
         currentStreak: newStreak,
         longestStreak: newLongestStreak,
@@ -232,6 +236,61 @@ export function Dashboard() {
 
   const handleGetWeeklyReport = async () => {
     return { reportSummary: 'Not implemented', nextWeekSuggestions: [] };
+  };
+
+  const handleSimulateNotification = async () => {
+    if (!user || !userProfile) return;
+
+    setIsSimulatingNotification(true);
+    try {
+      const notificationHistory: Notification[] = []; // In a real app, this would be fetched
+      const input: NotificationInput = {
+        studentId: user.uid,
+        streakLength: userProfile.currentStreak,
+        lastActivity: userProfile.lastActivityDate ? format(userProfile.lastActivityDate.toDate(), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
+        notificationHistory: notificationHistory,
+      };
+
+      const result = await intelligentStreakLossNotification(input);
+
+      toast({
+        title: 'Simulated AI Notification 🤖',
+        description: result.notificationMessage,
+      });
+
+    } catch (error) {
+      console.error('Error simulating notification:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Simulation Failed',
+        description: 'Could not generate the AI notification.',
+      });
+    } finally {
+      setIsSimulatingNotification(false);
+    }
+  };
+  
+  const handleGetGoal = async () => {
+    if (!user || !progressHistory) return;
+
+    setIsGoalLoading(true);
+    try {
+        const input: PersonalizedStreakGoalInput = {
+            studentId: user.uid,
+            historicalProgressData: progressHistory.map(p => ({ date: p.date, progress: p.progress })),
+        };
+        const result = await personalizedStreakGoal(input);
+        setGoal(result);
+    } catch (error) {
+        console.error("Error getting personalized goal:", error);
+        toast({
+            variant: "destructive",
+            title: "Goal Generation Failed",
+            description: "Could not generate a personalized goal.",
+        });
+    } finally {
+        setIsGoalLoading(false);
+    }
   };
 
   if (isProfileLoading || isHistoryLoading) {
@@ -314,6 +373,11 @@ export function Dashboard() {
           <ProgressForm onSubmit={handleProgressSubmit} />
           <SubjectPerformanceChart progressHistory={sortedHistory} />
           <WeeklyReportCard onGenerateReport={handleGetWeeklyReport} />
+          <NotificationCard 
+            isLoading={isSimulatingNotification}
+            onSimulate={handleSimulateNotification}
+          />
+          <GoalCard goal={goal} isLoading={isGoalLoading} onGetGoal={handleGetGoal} />
         </div>
       </div>
     </>
