@@ -1,57 +1,29 @@
 {
   "entities": {
-    "User": {
+    "UserProfile": {
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "User",
+      "title": "UserProfile",
       "type": "object",
-      "description": "Represents a user in the Streak Keeper application.",
+      "description": "Represents a user profile in the Streak Keeper app.",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the User entity."
-        },
-        "email": {
-          "type": "string",
-          "description": "Email address of the user.",
-          "format": "email"
+          "description": "Unique identifier for the UserProfile entity."
         },
         "name": {
           "type": "string",
-          "description": "Full name of the user."
+          "description": "The user's name."
         },
-        "currentStreak": {
-          "type": "number",
-          "description": "The user's current consecutive streak of progress days."
-        },
-        "longestStreak": {
-          "type": "number",
-          "description": "The user's longest ever streak of progress days."
-        },
-        "lastActivityDate": {
+        "email": {
           "type": "string",
-          "description": "The date of the user's last recorded activity.",
-          "format": "date-time"
-        },
-        "level": {
-          "type": "number",
-          "description": "The user's current level based on their XP."
-        },
-        "xp": {
-          "type": "number",
-          "description": "The user's total experience points."
-        },
-        "badges": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "A list of IDs for badges the user has earned."
+          "description": "The user's email address.",
+          "format": "email"
         }
       },
       "required": [
         "id",
-        "email",
-        "name"
+        "name",
+        "email"
       ]
     },
     "DailyProgress": {
@@ -66,77 +38,123 @@
         },
         "userId": {
           "type": "string",
-          "description": "Reference to User. (Relationship: User 1:N DailyProgress)"
+          "description": "Reference to UserProfile. (Relationship: UserProfile 1:N DailyProgress)"
         },
         "date": {
           "type": "string",
-          "description": "The date for which the progress is recorded.",
-          "format": "date"
+          "description": "The date of the progress entry.",
+          "format": "date-time"
         },
-        "activity": {
+        "activities": {
           "type": "string",
-          "description": "Description of the learning activities completed on the specified date."
-        },
-        "subject": {
-          "type": "string",
-          "description": "The subject studied on the specified date."
-        },
-        "progress": {
-          "type": "number",
-          "description": "Hours studied. Can be a floating-point number."
+          "description": "Description of the learning activities performed on this day."
         }
       },
       "required": [
+        "id",
         "userId",
         "date",
-        "activity",
-        "subject",
-        "progress"
+        "activities"
       ]
     },
-    "Badge": {
+    "Streak": {
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Badge",
+      "title": "Streak",
       "type": "object",
-      "description": "Represents an unlockable achievement or badge.",
+      "description": "Represents a user's streak information.",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the badge."
+          "description": "Unique identifier for the Streak entry."
         },
-        "name": {
+        "userId": {
           "type": "string",
-          "description": "The name of the badge."
+          "description": "Reference to UserProfile. (Relationship: UserProfile 1:1 Streak)"
         },
-        "description": {
-          "type": "string",
-          "description": "A description of what the badge represents."
+        "currentStreak": {
+          "type": "number",
+          "description": "The user's current streak (number of consecutive days)."
         },
-        "icon": {
+        "longestStreak": {
+          "type": "number",
+          "description": "The user's longest streak achieved."
+        },
+        "startDate": {
           "type": "string",
-          "description": "The name of the Lucide icon to display for the badge."
+          "description": "The start date of the current streak.",
+          "format": "date-time"
         }
       },
-      "required": ["id", "name", "description", "icon"]
+      "required": [
+        "id",
+        "userId",
+        "currentStreak",
+        "longestStreak",
+        "startDate"
+      ]
     }
   },
   "auth": {
     "providers": [
-      "google.com"
+      "password",
+      "anonymous"
     ]
   },
   "firestore": {
-    "/users/{userId}": {
-      "schema": {
-        "$ref": "#/backend/entities/User"
+    "structure": [
+      {
+        "path": "/users/{userId}/profile",
+        "definition": {
+          "entityName": "UserProfile",
+          "schema": {
+            "$ref": "#/backend/entities/UserProfile"
+          },
+          "description": "Stores user profile information. Only the user with the corresponding userId can access this data.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier for the user.  Matches the Firebase Auth UID."
+            }
+          ]
+        }
       },
-      "description": "Stores user profile information, including streak data. Path-based ownership ensures only the authenticated user can access their own data."
-    },
-    "/users/{userId}/dailyProgress/{dailyProgressId}": {
-      "schema": {
-        "$ref": "#/backend/entities/DailyProgress"
+      {
+        "path": "/users/{userId}/dailyProgress/{dailyProgressId}",
+        "definition": {
+          "entityName": "DailyProgress",
+          "schema": {
+            "$ref": "#/backend/entities/DailyProgress"
+          },
+          "description": "Stores daily progress entries for each user. Only the user with the corresponding userId can access their progress data.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier for the user. Matches the Firebase Auth UID."
+            },
+            {
+              "name": "dailyProgressId",
+              "description": "The unique identifier for the DailyProgress entry."
+            }
+          ]
+        }
       },
-      "description": "Stores daily progress records for each user. Path-based ownership ensures only the authenticated user can access their own data."
-    }
+      {
+        "path": "/users/{userId}/streak",
+        "definition": {
+          "entityName": "Streak",
+          "schema": {
+            "$ref": "#/backend/entities/Streak"
+          },
+          "description": "Stores streak information for each user. Only the user with the corresponding userId can access their streak data.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier for the user. Matches the Firebase Auth UID."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore structure is designed to ensure user data privacy and efficient data retrieval, while adhering to the principles of Authorization Independence, Structural Segregation, and Access Modeling. Each user has a dedicated collection for their profile data, daily progress, and streak information, allowing for simplified security rules based on path-based ownership.\n\n*   **UserProfile Collection (`/users/{userId}/profile`)**: Stores user profile information. This path ensures that only the authenticated user can access their own profile data.\n*   **Daily Progress Collection (`/users/{userId}/dailyProgress/{dailyProgressId}`)**: Stores the daily progress entries for each user. The `userId` parameter in the path ensures that only the user can access their progress data. The `dailyProgressId` is a unique identifier for each daily progress entry.\n*   **Streak Collection (`/users/{userId}/streak`)**: Stores the user's streak information. This path ensures that only the authenticated user can access their own streak data. Since each user has only one streak document, a document ID is not explicitly required.\n\nThis structure supports the required QAPs by:\n\n*   **Authorization Independence:** Each document's access control is determined solely by its path and the authenticated user's ID, eliminating the need for `get()` calls to parent documents.\n*   **Structural Segregation:** Each collection contains data with the same access needs (user-owned data), simplifying security rules.\n\nThis design promotes a scalable and secure data structure for the Streak Keeper application."
   }
 }
