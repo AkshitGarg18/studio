@@ -5,8 +5,8 @@ import type { ProgressEntry, UserProfile, Badge, Notification } from '@/lib/type
 import { format, subDays, isYesterday, isToday, parseISO, endOfToday, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { useUser, useFirestore, useDoc, useCollection, useMemoFirebase } from '@/firebase';
-import { doc, collection, writeBatch, serverTimestamp } from 'firebase/firestore';
-import { setDocumentNonBlocking, addDocumentNonBlocking } from '@/firebase';
+import { doc, collection, writeBatch, serverTimestamp, query, where, getDocs, updateDoc, addDoc } from 'firebase/firestore';
+import { setDocumentNonBlocking, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
 
 import { ALL_BADGES, getXpForLevel, LEVEL_UP_XP_FACTOR, XP_PER_HOUR } from '@/lib/gamification';
 import { StreakCard } from './StreakCard';
@@ -120,89 +120,112 @@ export function Dashboard() {
 
   const handleProgressSubmit = async (data: { progress: number; activity: string; subject: string }) => {
     if (!user || !firestore || !userProfile) return;
-
+  
     const todayStr = format(new Date(), 'yyyy-MM-dd');
     const lastEntry = sortedHistory.length > 0 ? sortedHistory[0] : null;
-
     let newStreak = userProfile.currentStreak;
-    
-    if (lastEntry) {
-      const lastEntryDate = parseISO(lastEntry.date);
-      if (isToday(lastEntryDate)) {
-        // Already logged today, streak doesn't increase
-      } else if (isYesterday(lastEntryDate)) {
-        newStreak++;
+  
+    const progressQuery = query(progressHistoryRef!, where('date', '==', todayStr));
+    const todayEntries = await getDocs(progressQuery);
+    const existingTodayEntry = todayEntries.docs.length > 0 ? { id: todayEntries.docs[0].id, ...todayEntries.docs[0].data() } as ProgressEntry : null;
+  
+    if (!existingTodayEntry) {
+      // No entry for today, this is a new log for the day
+      if (lastEntry) {
+        const lastEntryDate = parseISO(lastEntry.date);
+        if (isYesterday(lastEntryDate)) {
+          newStreak++;
+        } else if (!isToday(lastEntryDate)) {
+          newStreak = 1; // Streak is broken
+        }
       } else {
-        newStreak = 1; // Streak is broken, reset to 1
+        newStreak = 1; // First entry ever
       }
-    } else {
-      newStreak = 1; // First entry
     }
-
+    // If there's an existing entry, streak is already set for the day, no change.
+  
     const newLongestStreak = Math.max(userProfile.longestStreak, newStreak);
-    
-    let newXp = userProfile.xp + (data.progress * XP_PER_HOUR);
+    const addedXp = data.progress * XP_PER_HOUR;
+    let newXp = userProfile.xp + addedXp;
     let newLevel = userProfile.level;
-    const xpForNextLevel = getXpForLevel(newLevel + 1);
-
-    if (newLevel < 100 && newXp >= xpForNextLevel) {
-      newLevel++;
-      toast({
-        title: "Level Up! 🎉",
-        description: `Congratulations! You've reached Level ${newLevel}.`,
-      });
-    }
     
-    const allProgressEntries = [...sortedHistory, { ...data, date: todayStr, userId: user.uid }];
-    const preUpdateData = { ...userProfile, currentStreak: newStreak, longestStreak: newLongestStreak, level: newLevel, xp: newXp };
+    // Check for level up
+    let xpForNextLevel = getXpForLevel(newLevel + 1);
+    while (newLevel < 100 && newXp >= xpForNextLevel) {
+        newLevel++;
+        toast({
+            title: "Level Up! 🎉",
+            description: `Congratulations! You've reached Level ${newLevel}.`,
+        });
+        xpForNextLevel = getXpForLevel(newLevel + 1);
+    }
+  
+    // Badge calculation
+    const allProgressEntries = [...sortedHistory];
+    if (existingTodayEntry) {
+        const index = allProgressEntries.findIndex(p => p.id === existingTodayEntry.id);
+        if (index !== -1) {
+            allProgressEntries[index].progress += data.progress;
+        }
+    } else {
+        allProgressEntries.unshift({ ...data, date: todayStr, userId: user.uid });
+    }
 
+    const preUpdateData = { ...userProfile, currentStreak: newStreak, longestStreak: newLongestStreak, level: newLevel, xp: newXp };
     const newlyAwardedBadges: Badge[] = [];
     let updatedBadges = [...userProfile.badges];
     ALL_BADGES.forEach(badge => {
-        if (!updatedBadges.includes(badge.id) && badge.threshold(preUpdateData, allProgressEntries)) {
-            newlyAwardedBadges.push(badge);
-            updatedBadges.push(badge.id);
-        }
+      if (!updatedBadges.includes(badge.id) && badge.threshold(preUpdateData, allProgressEntries)) {
+        newlyAwardedBadges.push(badge);
+        updatedBadges.push(badge.id);
+      }
     });
-
+  
     if (newlyAwardedBadges.length > 0) {
-      newlyAwardedBadges.forEach(badge => {
-        toast({
-          title: 'New Badge Unlocked! 🏅',
-          description: `You've earned the "${badge.name}" badge!`,
-          action: (
-            <Button variant="outline" size="sm" onClick={() => openShareDialog(badge)}>
-              Share
-            </Button>
-          ),
-        });
-      });
+        newlyAwardedBadges.forEach(badge => {
+            toast({
+              title: 'New Badge Unlocked! 🏅',
+              description: `You've earned the "${badge.name}" badge!`,
+              action: (
+                <Button variant="outline" size="sm" onClick={() => openShareDialog(badge)}>
+                  Share
+                </Button>
+              ),
+            });
+          });
     }
     
-    const newProgressEntry = {
-      date: todayStr,
-      ...data,
-      userId: user.uid,
-    };
-
-    const newProgressDocRef = doc(collection(firestore, `users/${user.uid}/progress`));
-    setDocumentNonBlocking(newProgressDocRef, newProgressEntry, { merge: true });
-
+    // Firestore updates
+    if (existingTodayEntry && existingTodayEntry.id) {
+        const progressDocRef = doc(firestore, `users/${user.uid}/progress`, existingTodayEntry.id);
+        const updatedProgressData = {
+          progress: existingTodayEntry.progress + data.progress,
+          activity: `${existingTodayEntry.activity}; ${data.activity}`, // Combine activities
+          subject: data.subject, // Or combine subjects if needed
+        };
+        updateDocumentNonBlocking(progressDocRef, updatedProgressData);
+    } else {
+        const newProgressEntry = { date: todayStr, ...data, userId: user.uid };
+        addDocumentNonBlocking(progressHistoryRef!, newProgressEntry);
+    }
+    
     const userProfileUpdate = {
-        currentStreak: newStreak,
-        longestStreak: newLongestStreak,
-        lastActivityDate: serverTimestamp(),
-        level: newLevel,
-        xp: newXp,
-        badges: updatedBadges
+      currentStreak: newStreak,
+      longestStreak: newLongestStreak,
+      lastActivityDate: serverTimestamp(),
+      level: newLevel,
+      xp: newXp,
+      badges: updatedBadges,
     };
     setDocumentNonBlocking(userProfileRef!, userProfileUpdate, { merge: true });
-
-    setStreakEndTime(null);
-    
+  
+    if (newStreak > userProfile.currentStreak) {
+        setStreakEndTime(null);
+    }
+  
     toast({
       title: "Progress Logged!",
-      description: `You've earned ${data.progress * XP_PER_HOUR} XP.`,
+      description: `You've earned ${addedXp} XP.`,
     });
   };
 
