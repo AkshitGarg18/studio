@@ -128,34 +128,34 @@ export function Dashboard() {
 
   const handleProgressSubmit = async (data: { progress: number; activity: string; subject: string }) => {
     if (!user || !firestore || !userProfile || !progressHistory || !progressHistoryRef) return;
-  
+
     const todayStr = format(new Date(), 'yyyy-MM-dd');
     const lastEntry = sortedHistory.length > 0 ? sortedHistory[0] : null;
     let newStreak = userProfile.currentStreak;
-  
+
     const todayEntries = progressHistory.filter(p => p.date === todayStr);
     const existingTodayEntry = todayEntries.length > 0 ? todayEntries[0] : null;
-          
+
     if (!existingTodayEntry) {
-      // No entry for today, this is a new log for the day
-      if (lastEntry) {
-        const lastEntryDate = parseISO(lastEntry.date);
-        if (isYesterday(lastEntryDate)) {
-          newStreak++;
-        } else if (!isToday(lastEntryDate)) {
-          newStreak = 1; // Streak is broken
+        // No entry for today, this is a new log for the day
+        if (lastEntry) {
+            const lastEntryDate = parseISO(lastEntry.date);
+            if (isYesterday(lastEntryDate)) {
+                newStreak++;
+            } else if (!isToday(lastEntryDate)) {
+                newStreak = 1; // Streak is broken
+            }
+        } else {
+            newStreak = 1; // First entry ever
         }
-      } else {
-        newStreak = 1; // First entry ever
-      }
     }
     // If there's an existing entry, streak is already set for the day, no change.
-  
+
     const newLongestStreak = Math.max(userProfile.longestStreak, newStreak);
     const addedXp = data.progress * XP_PER_HOUR;
     let newXp = userProfile.xp + addedXp;
     let newLevel = userProfile.level;
-    
+
     // Check for level up
     let xpForNextLevel = getXpForLevel(newLevel + 1);
     while (newLevel < 100 && newXp >= xpForNextLevel) {
@@ -166,74 +166,75 @@ export function Dashboard() {
         });
         xpForNextLevel = getXpForLevel(newLevel + 1);
     }
-  
-    // Badge calculation
-    const allProgressEntries = [...progressHistory];
-    if (existingTodayEntry) {
-        const index = allProgressEntries.findIndex(p => p.id === existingTodayEntry.id);
-        if (index !== -1) {
-            allProgressEntries[index].progress += data.progress;
-        }
-    } else {
-        allProgressEntries.unshift({ ...data, date: todayStr, userId: user.uid, id: 'temp' });
-    }
 
+    // Badge calculation
+    const newProgressForBadgeCheck: ProgressEntry = {
+        ...data,
+        date: todayStr,
+        userId: user.uid,
+        id: 'temp',
+    };
+
+    // Create a temporary, updated history for badge checking
+    const allProgressEntries = [newProgressForBadgeCheck, ...progressHistory];
+    
     const preUpdateData = { ...userProfile, currentStreak: newStreak, longestStreak: newLongestStreak, level: newLevel, xp: newXp };
     const newlyAwardedBadges: Badge[] = [];
     let updatedBadges = [...userProfile.badges];
     ALL_BADGES.forEach(badge => {
-      if (!updatedBadges.includes(badge.id) && badge.threshold(preUpdateData, allProgressEntries)) {
-        newlyAwardedBadges.push(badge);
-        updatedBadges.push(badge.id);
-      }
+        if (!updatedBadges.includes(badge.id) && badge.threshold(preUpdateData, allProgressEntries)) {
+            newlyAwardedBadges.push(badge);
+            updatedBadges.push(badge.id);
+        }
     });
-  
+
     if (newlyAwardedBadges.length > 0) {
         newlyAwardedBadges.forEach(badge => {
             toast({
-              title: 'New Badge Unlocked! 🏅',
-              description: `You've earned the "${badge.name}" badge!`,
-              action: (
-                <Button variant="outline" size="sm" onClick={() => openShareDialog(badge)}>
-                  Share
-                </Button>
-              ),
+                title: 'New Badge Unlocked! 🏅',
+                description: `You've earned the "${badge.name}" badge!`,
+                action: (
+                    <Button variant="outline" size="sm" onClick={() => openShareDialog(badge)}>
+                        Share
+                    </Button>
+                ),
             });
-          });
+        });
     }
-    
+
     // Firestore updates
     if (existingTodayEntry && existingTodayEntry.id) {
         const progressDocRef = doc(firestore, `users/${user.uid}/progress`, existingTodayEntry.id);
         const updatedProgressData = {
-          progress: existingTodayEntry.progress + data.progress,
-          activity: `${existingTodayEntry.activity}; ${data.activity}`, // Combine activities
+            progress: existingTodayEntry.progress + data.progress,
+            activity: `${existingTodayEntry.activity}; ${data.activity}`, // Combine activities
         };
         updateDocumentNonBlocking(progressDocRef, updatedProgressData);
     } else {
         const newProgressEntry = { date: todayStr, ...data, userId: user.uid };
         addDocumentNonBlocking(progressHistoryRef, newProgressEntry);
     }
-    
+
     const userProfileUpdate = {
-      currentStreak: newStreak,
-      longestStreak: newLongestStreak,
-      lastActivityDate: serverTimestamp(),
-      level: newLevel,
-      xp: newXp,
-      badges: updatedBadges,
+        currentStreak: newStreak,
+        longestStreak: newLongestStreak,
+        lastActivityDate: serverTimestamp(),
+        level: newLevel,
+        xp: newXp,
+        badges: updatedBadges,
     };
     setDocumentNonBlocking(userProfileRef!, userProfileUpdate, { merge: true });
-  
+
     if (newStreak > userProfile.currentStreak) {
         setStreakEndTime(null);
     }
-  
+
     toast({
-      title: "Progress Logged!",
-      description: `You've earned ${addedXp} XP.`,
+        title: "Progress Logged!",
+        description: `You've earned ${addedXp} XP.`,
     });
-  };
+};
+
 
   const handleGetPerformanceTips = async (currentWeekProgress: number, previousWeekProgress: number) => {
     return { tips: [] };
