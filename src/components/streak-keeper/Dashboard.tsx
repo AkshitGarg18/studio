@@ -30,7 +30,6 @@ const generateChartData = (progressHistory: ProgressEntry[], days: number) => {
   const data: { date: string; progress: number }[] = [];
   const today = new Date();
   
-  // Create a map to store total progress for each day
   const progressMap = new Map<string, number>();
   progressHistory.forEach(p => {
     const dateKey = format(parseISO(p.date), 'yyyy-MM-dd');
@@ -98,8 +97,8 @@ export function Dashboard() {
     return [...progressHistory].sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
   }, [progressHistory]);
 
-  const chartData7Days = useMemo(() => generateChartData([], 7), []);
-  const chartData30Days = useMemo(() => generateChartData([], 30), []);
+  const chartData7Days = useMemo(() => generateChartData(sortedHistory, 7), [sortedHistory]);
+  const chartData30Days = useMemo(() => generateChartData(sortedHistory, 30), [sortedHistory]);
 
   useEffect(() => {
     if (!userProfile || !sortedHistory) {
