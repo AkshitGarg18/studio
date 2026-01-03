@@ -72,6 +72,8 @@ export const ALL_BADGES: Badge[] = [
     icon: 'Footprints',
     threshold: (data, progress) => progress.length >= 1,
   },
+
+  // Milestone Badges
   {
     id: 'ten-hours',
     name: 'Diligent Student',
