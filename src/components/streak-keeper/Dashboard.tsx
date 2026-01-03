@@ -5,8 +5,7 @@ import type { ProgressEntry, UserProfile, Badge, Notification } from '@/lib/type
 import { format, subDays, isYesterday, isToday, parseISO, endOfToday, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { useUser, useFirestore, useDoc, useCollection, useMemoFirebase } from '@/firebase';
-import { doc, collection, serverTimestamp } from 'firebase/firestore';
-import { setDocumentNonBlocking, addDocumentNonBlocking } from '@/firebase';
+import { doc, collection, serverTimestamp, setDoc, addDoc } from 'firebase/firestore';
 
 import { ALL_BADGES, getXpForLevel, XP_PER_HOUR } from '@/lib/gamification';
 import { StreakCard } from './StreakCard';
@@ -100,8 +99,16 @@ export function Dashboard() {
     return [...progressHistory].sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
   }, [progressHistory]);
 
-  const chartData7Days = useMemo(() => generateChartData(progressHistory ?? [], 7), [progressHistory]);
-  const chartData30Days = useMemo(() => generateChartData(progressHistory ?? [], 30), [progressHistory]);
+  const chartData7Days = useMemo(() => {
+    if (!progressHistory) return [];
+    return generateChartData(progressHistory, 7)
+  }, [progressHistory]);
+  
+  const chartData30Days = useMemo(() => {
+      if (!progressHistory) return [];
+      return generateChartData(progressHistory, 30)
+  }, [progressHistory]);
+
 
   useEffect(() => {
     if (!userProfile || !sortedHistory) {
@@ -133,13 +140,12 @@ export function Dashboard() {
     if (!user || !firestore || !userProfile || !progressHistory || !progressHistoryRef) return;
 
     const todayStr = format(new Date(), 'yyyy-MM-dd');
-    const todayEntries = progressHistory.filter(p => format(parseISO(p.date), 'yyyy-MM-dd') === todayStr);
-
     let newStreak = userProfile.currentStreak;
-    const lastEntry = sortedHistory.length > 0 ? sortedHistory[0] : null;
 
-    // Streak logic - only increment streak on the *first* log of a new day
+    // Check if the *very first* log of the day is happening
+    const todayEntries = progressHistory.filter(p => format(parseISO(p.date), 'yyyy-MM-dd') === todayStr);
     if (todayEntries.length === 0) {
+        const lastEntry = sortedHistory.length > 0 ? sortedHistory[0] : null;
         if (lastEntry && isYesterday(parseISO(lastEntry.date))) {
             newStreak++; // Continue streak
         } else if (!lastEntry || (lastEntry && !isToday(parseISO(lastEntry.date)))) {
@@ -163,59 +169,68 @@ export function Dashboard() {
         xpForNextLevel = getXpForLevel(newLevel + 1);
     }
 
-    // Always create a new progress entry for each submission
     const newProgressEntry = { 
         ...data, 
         date: todayStr, 
         userId: user.uid 
     };
-    addDocumentNonBlocking(progressHistoryRef, newProgressEntry);
 
-    // --- Badge Calculation Logic ---
-    const allProgressEntriesForBadges = [...progressHistory, { ...newProgressEntry, id: 'temp' }];
-    const preUpdateData = { ...userProfile, currentStreak: newStreak, longestStreak: newLongestStreak, level: newLevel, xp: newXp, badges: userProfile.badges };
-    const newlyAwardedBadges: Badge[] = [];
-    let updatedBadges = [...userProfile.badges];
-    ALL_BADGES.forEach(badge => {
-        if (!updatedBadges.includes(badge.id) && badge.threshold(preUpdateData, allProgressEntriesForBadges)) {
-            newlyAwardedBadges.push(badge);
-            updatedBadges.push(badge.id);
-        }
-    });
+    try {
+        await addDoc(progressHistoryRef, newProgressEntry);
 
-    if (newlyAwardedBadges.length > 0) {
-        newlyAwardedBadges.forEach(badge => {
-            toast({
-                title: 'New Badge Unlocked! 🏅',
-                description: `You've earned the "${badge.name}" badge!`,
-                action: (
-                    <Button variant="outline" size="sm" onClick={() => openShareDialog(badge)}>
-                        Share
-                    </Button>
-                ),
+        const allProgressEntriesForBadges = [...progressHistory, { ...newProgressEntry, id: 'temp' }];
+        const preUpdateData = { ...userProfile, currentStreak: newStreak, longestStreak: newLongestStreak, level: newLevel, xp: newXp, badges: userProfile.badges };
+        const newlyAwardedBadges: Badge[] = [];
+        let updatedBadges = [...userProfile.badges];
+
+        ALL_BADGES.forEach(badge => {
+            if (!updatedBadges.includes(badge.id) && badge.threshold(preUpdateData, allProgressEntriesForBadges)) {
+                newlyAwardedBadges.push(badge);
+                updatedBadges.push(badge.id);
+            }
+        });
+
+        if (newlyAwardedBadges.length > 0) {
+            newlyAwardedBadges.forEach(badge => {
+                toast({
+                    title: 'New Badge Unlocked! 🏅',
+                    description: `You've earned the "${badge.name}" badge!`,
+                    action: (
+                        <Button variant="outline" size="sm" onClick={() => openShareDialog(badge)}>
+                            Share
+                        </Button>
+                    ),
+                });
             });
+        }
+
+        const userProfileUpdate = {
+            currentStreak: newStreak,
+            longestStreak: newLongestStreak,
+            lastActivityDate: serverTimestamp(),
+            level: newLevel,
+            xp: newXp,
+            badges: updatedBadges,
+        };
+        
+        await setDoc(userProfileRef!, userProfileUpdate, { merge: true });
+
+        if (newStreak > userProfile.currentStreak) {
+            setStreakEndTime(null);
+        }
+
+        toast({
+            title: "Progress Logged!",
+            description: `You've earned ${addedXp} XP for studying ${data.subject}.`,
+        });
+    } catch (error) {
+        console.error("Error logging progress:", error);
+        toast({
+            variant: "destructive",
+            title: "Failed to Log Progress",
+            description: "Could not save your progress. Please try again.",
         });
     }
-
-    // --- Firestore Update Logic ---
-    const userProfileUpdate = {
-        currentStreak: newStreak,
-        longestStreak: newLongestStreak,
-        lastActivityDate: serverTimestamp(),
-        level: newLevel,
-        xp: newXp,
-        badges: updatedBadges,
-    };
-    setDocumentNonBlocking(userProfileRef!, userProfileUpdate, { merge: true });
-
-    if (newStreak > userProfile.currentStreak) {
-        setStreakEndTime(null);
-    }
-
-    toast({
-        title: "Progress Logged!",
-        description: `You've earned ${addedXp} XP for studying ${data.subject}.`,
-    });
   };
 
   const weeklyStats = useMemo(() => {
@@ -244,27 +259,43 @@ export function Dashboard() {
 
   const handleGetPerformanceTips = async (): Promise<PerformanceTipsOutput> => {
     if (!progressHistory) return { tips: [] };
-    
-    const recentActivities = progressHistory.slice(0, 5).map(p => ({ subject: p.subject, activity: p.activity }));
+    try {
+        const recentActivities = progressHistory.slice(0, 5).map(p => ({ subject: p.subject, activity: p.activity }));
 
-    const input: PerformanceTipsInput = {
-      currentWeekProgress: weeklyStats.currentWeekProgress,
-      previousWeekProgress: weeklyStats.lastWeekProgress,
-      recentActivities: recentActivities,
-    };
-    return await getPerformanceTips(input);
+        const input: PerformanceTipsInput = {
+        currentWeekProgress: weeklyStats.currentWeekProgress,
+        previousWeekProgress: weeklyStats.lastWeekProgress,
+        recentActivities: recentActivities,
+        };
+        return await getPerformanceTips(input);
+    } catch (error) {
+        console.error('Error getting performance tips:', error);
+        toast({
+            title: 'Feature in Progress',
+            description: 'The AI tips generator is currently under development.',
+        });
+        return { tips: ["This feature is currently under development."] };
+    }
   };
 
 
   const handleGetWeeklyReport = async (): Promise<WeeklyPerformanceReviewOutput> => {
      if (!progressHistory) return { reportSummary: 'No data available to generate a report.', nextWeekSuggestions: [] };
 
-    const input: WeeklyPerformanceReviewInput = {
-      currentWeekProgress: weeklyStats.currentWeekEntries,
-      previousWeekProgress: weeklyStats.lastWeekEntries,
-    };
-
-    return await getWeeklyPerformanceReview(input);
+    try {
+        const input: WeeklyPerformanceReviewInput = {
+            currentWeekProgress: weeklyStats.currentWeekEntries,
+            previousWeekProgress: weeklyStats.lastWeekEntries,
+        };
+        return await getWeeklyPerformanceReview(input);
+    } catch (error) {
+        console.error('Error getting weekly report:', error);
+        toast({
+            title: 'Feature in Progress',
+            description: 'The AI weekly report is currently under development.',
+        });
+        return { reportSummary: 'This feature is currently under development.', nextWeekSuggestions: [] };
+    }
   };
 
   const handleSimulateNotification = async () => {
@@ -290,9 +321,8 @@ export function Dashboard() {
     } catch (error) {
       console.error('Error simulating notification:', error);
       toast({
-        variant: 'destructive',
-        title: 'Simulation Failed',
-        description: 'Could not generate the AI notification.',
+        title: 'Feature in Progress',
+        description: 'The AI notification simulation is currently under development.',
       });
     } finally {
       setIsSimulatingNotification(false);
@@ -313,10 +343,10 @@ export function Dashboard() {
     } catch (error) {
         console.error("Error getting personalized goal:", error);
         toast({
-            variant: "destructive",
-            title: "Goal Generation Failed",
-            description: "Could not generate a personalized goal.",
+            title: "Feature in Progress",
+            description: "The AI goal generator is currently under development.",
         });
+        setGoal(null);
     } finally {
         setIsGoalLoading(false);
     }
