@@ -138,7 +138,7 @@ export function Dashboard() {
     let newLevel = userProfile.level;
     const xpForNextLevel = getXpForLevel(newLevel + 1);
 
-    if (newXp >= xpForNextLevel) {
+    if (newLevel < 100 && newXp >= xpForNextLevel) {
       newLevel++;
       toast({
         title: "Level Up! 🎉",

@@ -77,6 +77,7 @@ function ProfilePageContent() {
   const xpProgress = xp - xpForCurrentLevel;
   const xpToNext = xpForNextLevel - xpForCurrentLevel;
   const progressPercentage = xpToNext > 0 ? (xpProgress / xpToNext) * 100 : 100;
+  const isMaxLevel = level >= 100;
 
   return (
     <div className="flex min-h-screen w-full flex-col">
@@ -107,7 +108,7 @@ function ProfilePageContent() {
                 </Tooltip>
               </TooltipProvider>
               <p className="text-sm text-muted-foreground">
-                {xpForNextLevel - xp > 0 ? `${(xpForNextLevel - xp).toLocaleString()} XP to next level` : "Max level reached!"}
+                {!isMaxLevel ? `${(xpForNextLevel - xp).toLocaleString()} XP to next level` : "Max level reached!"}
               </p>
             </div>
             
