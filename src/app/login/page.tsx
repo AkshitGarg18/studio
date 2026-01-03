@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth, useUser, useFirestore } from '@/firebase';
-import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { GoogleAuthProvider, signInWithRedirect, getRedirectResult } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,46 +25,66 @@ export default function LoginPage() {
   const auth = useAuth();
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
+  const [isProcessingSignIn, setIsProcessingSignIn] = useState(true);
 
   useEffect(() => {
-    if (!isUserLoading && user) {
+    // This effect handles the redirect result after Google sign-in
+    const processRedirect = async () => {
+      if (!auth || !firestore) return;
+
+      try {
+        const result = await getRedirectResult(auth);
+        if (result && result.user) {
+          const user = result.user;
+          const userDocRef = doc(firestore, 'users', user.uid);
+          const userDoc = await getDoc(userDocRef);
+
+          if (!userDoc.exists()) {
+            const newUserProfile: UserProfile = {
+              id: user.uid,
+              name: user.displayName,
+              email: user.email,
+              currentStreak: 0,
+              longestStreak: 0,
+              lastActivityDate: null,
+              level: 1,
+              xp: 0,
+              badges: [],
+            };
+            await setDoc(userDocRef, newUserProfile);
+          }
+          // Redirect to home page after successful profile check/creation
+          router.push('/');
+        } else {
+            setIsProcessingSignIn(false);
+        }
+      } catch (error) {
+        console.error('Error during sign-in redirect:', error);
+        setIsProcessingSignIn(false);
+      }
+    };
+
+    // Only process redirect if not loading and services are available
+    if (!isUserLoading && auth && firestore) {
+        processRedirect();
+    }
+  }, [auth, firestore, isUserLoading, router]);
+
+  useEffect(() => {
+    // This effect redirects already logged-in users to the homepage
+    if (!isUserLoading && !isProcessingSignIn && user) {
       router.push('/');
     }
-  }, [user, isUserLoading, router]);
+  }, [user, isUserLoading, isProcessingSignIn, router]);
 
   const handleSignIn = async () => {
+    if (!auth) return;
     const provider = new GoogleAuthProvider();
-    try {
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-
-      if (firestore) {
-        const userDocRef = doc(firestore, 'users', user.uid);
-        const userDoc = await getDoc(userDocRef);
-
-        if (!userDoc.exists()) {
-          // New user, create a profile
-          const newUserProfile: UserProfile = {
-            id: user.uid,
-            name: user.displayName,
-            email: user.email,
-            currentStreak: 0,
-            longestStreak: 0,
-            lastActivityDate: null,
-            level: 1,
-            xp: 0,
-            badges: [],
-          };
-          await setDoc(userDocRef, newUserProfile);
-        }
-      }
-      router.push('/');
-    } catch (error) {
-      console.error('Error signing in with Google: ', error);
-    }
+    // Use signInWithRedirect instead of signInWithPopup
+    await signInWithRedirect(auth, provider);
   };
   
-  if (isUserLoading || user) {
+  if (isUserLoading || isProcessingSignIn || user) {
     return (
         <div className="flex min-h-screen items-center justify-center bg-background">
             <Flame className="h-12 w-12 animate-pulse text-primary" />
