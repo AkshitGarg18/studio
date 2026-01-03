@@ -28,22 +28,34 @@ export default function LoginPage() {
   const [isProcessingSignIn, setIsProcessingSignIn] = useState(true);
 
   useEffect(() => {
-    // This effect handles the redirect result after Google sign-in
-    const processRedirect = async () => {
-      if (!auth || !firestore) return;
+    // This effect handles all authentication logic on this page
+    const processAuth = async () => {
+      // If services aren't ready, wait.
+      if (!auth || !firestore || isUserLoading) {
+        return;
+      }
 
+      // If there's already a user session, redirect to home.
+      if (user) {
+        router.push('/');
+        return;
+      }
+
+      // If there's no user, try to get the redirect result.
       try {
         const result = await getRedirectResult(auth);
         if (result && result.user) {
-          const user = result.user;
-          const userDocRef = doc(firestore, 'users', user.uid);
+          // User has just signed in via redirect.
+          const loggedInUser = result.user;
+          const userDocRef = doc(firestore, 'users', loggedInUser.uid);
           const userDoc = await getDoc(userDocRef);
 
           if (!userDoc.exists()) {
+            // Create a new profile for the new user.
             const newUserProfile: UserProfile = {
-              id: user.uid,
-              name: user.displayName,
-              email: user.email,
+              id: loggedInUser.uid,
+              name: loggedInUser.displayName,
+              email: loggedInUser.email,
               currentStreak: 0,
               longestStreak: 0,
               lastActivityDate: null,
@@ -53,38 +65,29 @@ export default function LoginPage() {
             };
             await setDoc(userDocRef, newUserProfile);
           }
-          // Redirect to home page after successful profile check/creation
+          // After profile creation/check, redirect to home.
           router.push('/');
         } else {
-            setIsProcessingSignIn(false);
+          // No user session and no redirect result, so it's a fresh login page.
+          // Stop processing and show the login button.
+          setIsProcessingSignIn(false);
         }
       } catch (error) {
         console.error('Error during sign-in redirect:', error);
-        setIsProcessingSignIn(false);
+        setIsProcessingSignIn(false); // Stop processing on error
       }
     };
 
-    // Only process redirect if not loading and services are available
-    if (!isUserLoading && auth && firestore) {
-        processRedirect();
-    }
-  }, [auth, firestore, isUserLoading, router]);
-
-  useEffect(() => {
-    // This effect redirects already logged-in users to the homepage
-    if (!isUserLoading && !isProcessingSignIn && user) {
-      router.push('/');
-    }
-  }, [user, isUserLoading, isProcessingSignIn, router]);
+    processAuth();
+  }, [auth, firestore, user, isUserLoading, router]);
 
   const handleSignIn = async () => {
     if (!auth) return;
     const provider = new GoogleAuthProvider();
-    // Use signInWithRedirect instead of signInWithPopup
     await signInWithRedirect(auth, provider);
   };
   
-  if (isUserLoading || isProcessingSignIn || user) {
+  if (isUserLoading || isProcessingSignIn) {
     return (
         <div className="flex min-h-screen items-center justify-center bg-background">
             <Flame className="h-12 w-12 animate-pulse text-primary" />
