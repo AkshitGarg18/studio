@@ -31,6 +31,21 @@
           "type": "string",
           "description": "The date of the user's last recorded activity.",
           "format": "date-time"
+        },
+        "level": {
+          "type": "number",
+          "description": "The user's current level based on their XP."
+        },
+        "xp": {
+          "type": "number",
+          "description": "The user's total experience points."
+        },
+        "badges": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "A list of IDs for badges the user has earned."
         }
       },
       "required": [
@@ -78,6 +93,31 @@
         "subject",
         "progress"
       ]
+    },
+    "Badge": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Badge",
+      "type": "object",
+      "description": "Represents an unlockable achievement or badge.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the badge."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the badge."
+        },
+        "description": {
+          "type": "string",
+          "description": "A description of what the badge represents."
+        },
+        "icon": {
+          "type": "string",
+          "description": "The name of the Lucide icon to display for the badge."
+        }
+      },
+      "required": ["id", "name", "description", "icon"]
     }
   },
   "auth": {

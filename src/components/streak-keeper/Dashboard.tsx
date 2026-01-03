@@ -1,25 +1,27 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import type { StudentData, ProgressEntry } from '@/lib/types';
+import type { StudentData, ProgressEntry, Badge } from '@/lib/types';
 import { format, subDays, isYesterday, isToday, parseISO, endOfToday, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { personalizedStreakGoal, type PersonalizedStreakGoalOutput } from '@/ai/flows/personalized-streak-goal';
 import { intelligentStreakLossNotification } from '@/ai/flows/intelligent-streak-loss-notification';
-import { getPerformanceTips, type PerformanceTipsOutput } from '@/ai/flows/performance-improvement-tips';
+import { getPerformanceTips } from '@/ai/flows/performance-improvement-tips';
 import { getWeeklyPerformanceReview, type WeeklyPerformanceReviewOutput } from '@/ai/flows/weekly-performance-review';
 
 import { initialStudentData } from '@/lib/mock-data';
+import { ALL_BADGES, getXpForLevel, LEVEL_UP_XP_FACTOR, XP_PER_HOUR } from '@/lib/gamification';
 import { StreakCard } from './StreakCard';
 import { StreakChart } from './StreakChart';
 import { ProgressForm } from './ProgressForm';
 import { GoalCard } from './GoalCard';
 import { NotificationCard } from './NotificationCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Trophy, CalendarClock } from 'lucide-react';
+import { Trophy, CalendarClock, Star } from 'lucide-react';
 import { SubjectPerformanceChart } from './SubjectPerformanceChart';
 import { WeeklyComparisonCard } from './WeeklyComparisonCard';
 import { WeeklyReportCard } from './WeeklyReportCard';
+import { LevelCard } from './LevelCard';
 
 const generateChartData = (progressHistory: ProgressEntry[], days: number) => {
   const data: { date: string; progress: number }[] = [];
@@ -118,18 +120,55 @@ export function Dashboard() {
 
     const newLongestStreak = Math.max(studentData.longestStreak, newStreak);
     
+    // XP and Level Logic
+    let newXp = studentData.xp + (data.progress * XP_PER_HOUR);
+    let newLevel = studentData.level;
+    const xpForNextLevel = getXpForLevel(newLevel + 1);
+
+    if (newXp >= xpForNextLevel) {
+      newLevel++;
+      toast({
+        title: "Level Up! 🎉",
+        description: `Congratulations! You've reached Level ${newLevel}.`,
+      });
+    }
+
+    const preUpdateData = { ...studentData, streak: newStreak, longestStreak: newLongestStreak, progressHistory: updatedHistory, level: newLevel, xp: newXp };
+
+    // Badge Logic
+    const newlyAwardedBadges: Badge[] = [];
+    let updatedBadges = [...studentData.badges];
+    ALL_BADGES.forEach(badge => {
+        if (!updatedBadges.includes(badge.id) && badge.threshold(preUpdateData)) {
+            newlyAwardedBadges.push(badge);
+            updatedBadges.push(badge.id);
+        }
+    });
+
+    if (newlyAwardedBadges.length > 0) {
+        newlyAwardedBadges.forEach(badge => {
+            toast({
+                title: 'New Badge Unlocked! 🏅',
+                description: `You've earned the "${badge.name}" badge!`,
+            });
+        });
+    }
+
     setStudentData(prev => ({
       ...prev,
       streak: newStreak,
       longestStreak: newLongestStreak,
       progressHistory: updatedHistory,
+      level: newLevel,
+      xp: newXp,
+      badges: updatedBadges,
     }));
 
     setStreakEndTime(null); // Progress logged, so remove timer
     
     toast({
       title: "Progress Logged!",
-      description: "Great job on staying consistent.",
+      description: `You've earned ${data.progress * XP_PER_HOUR} XP.`,
     });
   };
   
@@ -251,7 +290,7 @@ export function Dashboard() {
   return (
     <div className="grid grid-cols-1 gap-4 md:gap-8 lg:grid-cols-5">
       <div className="lg:col-span-3 grid auto-rows-min gap-4 md:gap-8">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <StreakCard 
             title="Current Streak" 
             streak={studentData.streak}
@@ -267,12 +306,18 @@ export function Dashboard() {
               <p className="text-xs text-muted-foreground">Your personal best!</p>
             </CardContent>
           </Card>
-           <LastLogCard date={lastLogDate} />
-          <WeeklyComparisonCard 
-            currentWeekHours={weeklyStats.currentWeekProgress}
-            previousWeekHours={weeklyStats.lastWeekProgress}
-            onGetTips={handleGetPerformanceTips}
+          <LevelCard
+            level={studentData.level}
+            xp={studentData.xp}
           />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+            <LastLogCard date={lastLogDate} />
+            <WeeklyComparisonCard 
+                currentWeekHours={weeklyStats.currentWeekProgress}
+                previousWeekHours={weeklyStats.lastWeekProgress}
+                onGetTips={handleGetPerformanceTips}
+            />
         </div>
         <StreakChart 
             data={chartData7Days} 

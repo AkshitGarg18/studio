@@ -15,12 +15,25 @@ export type Notification = {
   response?: string;
 };
 
+export type Badge = {
+  id: string;
+  name: string;
+  description: string;
+  icon: string; // Lucide icon name
+  threshold: (data: StudentData) => boolean;
+};
+
 export type StudentData = {
   id: string;
+  name: string;
+  email: string;
   streak: number;
   longestStreak: number;
   progressHistory: ProgressEntry[];
   notificationHistory: Notification[];
+  level: number;
+  xp: number;
+  badges: string[];
 };
 
 export type UserProfile = {
@@ -30,4 +43,7 @@ export type UserProfile = {
   currentStreak: number;
   longestStreak: number;
   lastActivityDate: Timestamp | null;
+  level: number;
+  xp: number;
+  badges: string[];
 }
