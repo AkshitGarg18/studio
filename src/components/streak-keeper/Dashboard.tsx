@@ -90,16 +90,16 @@ export function Dashboard() {
     return collection(firestore, 'users', user.uid, 'progress');
   }, [firestore, user]);
   
-  const { data: userProfile, isLoading: isProfileLoading } = useDoc<UserProfile>(userProfileRef);
   const { data: progressHistory, isLoading: isHistoryLoading } = useCollection<ProgressEntry>(progressHistoryRef);
+  const { data: userProfile, isLoading: isProfileLoading } = useDoc<UserProfile>(userProfileRef);
 
   const sortedHistory = useMemo(() => {
     if (!progressHistory) return [];
     return [...progressHistory].sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
   }, [progressHistory]);
 
-  const chartData7Days = useMemo(() => generateChartData(progressHistory || [], 7), [progressHistory]);
-  const chartData30Days = useMemo(() => generateChartData(progressHistory || [], 30), [progressHistory]);
+  const chartData7Days = useMemo(() => generateChartData([], 7), []);
+  const chartData30Days = useMemo(() => generateChartData([], 30), []);
 
   useEffect(() => {
     if (!userProfile || !sortedHistory) {
