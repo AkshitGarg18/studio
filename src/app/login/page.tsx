@@ -85,7 +85,9 @@ export default function LoginPage() {
       toast({
         variant: "destructive",
         title: "Sign Up Failed",
-        description: error.message || "Could not create your account.",
+        description: error.code === 'auth/email-already-in-use'
+            ? "This email is already in use. Please sign in."
+            : error.message || "Could not create your account.",
       });
     } finally {
       setIsLoading(false);
@@ -101,10 +103,13 @@ export default function LoginPage() {
       // The useEffect will handle the redirect
     } catch (error: any) {
       console.error('Error during sign-in:', error);
+      const description = error.code === 'auth/invalid-credential'
+          ? "Invalid email or password. Please try again."
+          : error.message || "Could not sign you in.";
       toast({
         variant: "destructive",
         title: "Sign In Failed",
-        description: error.message || "Could not sign you in. Please check your credentials.",
+        description: description,
       });
     } finally {
       setIsLoading(false);
