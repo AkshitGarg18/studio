@@ -1,184 +1,28 @@
-/**
- * Core Philosophy: This ruleset enforces a strict user-ownership model.
- * All user-generated data is private and can only be accessed by the user
- * who created it. There is no public or shared data in this model.
- *
- * Data Structure: All data is organized under a top-level `/users`
- * collection. Each user's data is nested under a document corresponding to their
- * unique Firebase Authentication UID (`/users/{userId}`). This includes their
- * profile, daily progress logs, and streak information. This structure ensures
- * that security rules can be simple, performant, and based on the document path.
- *
- * Key Security Decisions:
- * - User Listing Disabled: It is impossible to list all users in the `/users`
- *   collection. This protects user privacy by preventing enumeration attacks.
- * - Strict Ownership: All read and write operations on a user's data tree
- *   (`/users/{userId}/...`) are strictly limited to that authenticated user.
- * - Path-Data Consistency: When creating documents, rules enforce that
- *   internal `userId` or `id` fields match the `userId` from the document path.
- *   This ensures relational integrity from the moment of creation and prevents
- *   data from being associated with the wrong user.
- * - Immutable Ownership: Once a document is created, its core ownership link
- *   (the internal `userId` or `id` field) cannot be changed. This prevents
- *   documents from being maliciously reassigned to other users.
- */
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Helper functions to promote readable, secure, and maintainable rules.
-
-    /**
-     * Checks if a user is authenticated.
-     */
+    
     function isSignedIn() {
       return request.auth != null;
     }
 
-    /**
-     * Checks if the currently authenticated user's UID matches the provided userId.
-     * This is the foundation of the user-ownership model.
-     */
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    /**
-     * Verifies that the document being operated on already exists.
-     * Crucial for secure update and delete operations.
-     */
-    function isExistingDoc() {
-      return resource != null;
-    }
-
-    /**
-     * A composite function that verifies ownership for an existing document.
-     * Used for all update and delete operations to ensure the user is the owner
-     * and the document actually exists.
-     */
-    function isOwnerOfExistingDoc(userId) {
-      return isOwner(userId) && isExistingDoc();
-    }
-
-    /**
-     * Validates that the UserProfile being created has an 'id' field
-     * that correctly matches the owner's UID from the path.
-     */
-    function hasValidUserProfileDataOnCreate(userId) {
-      return request.resource.data.id == userId;
-    }
-
-    /**
-     * Enforces that the UserProfile's 'id' field cannot be changed after creation.
-     */
-    function isUserProfileDataImmutable() {
-      return request.resource.data.id == resource.data.id;
-    }
-
-    /**
-     * Validates that the DailyProgress document being created has a 'userId' field
-     * that correctly matches the owner's UID from the path.
-     */
-    function hasValidDailyProgressDataOnCreate(userId) {
-      return request.resource.data.userId == userId;
-    }
-
-    /**
-     * Enforces that the DailyProgress 'userId' field cannot be changed after creation.
-     */
-    function isDailyProgressDataImmutable() {
-      return request.resource.data.userId == resource.data.userId;
-    }
-
-    /**
-     * Validates that the Streak document being created has a 'userId' field
-     * that correctly matches the owner's UID from the path.
-     */
-    function hasValidStreakDataOnCreate(userId) {
-      return request.resource.data.userId == userId;
-    }
-
-    /**
-     * Enforces that the Streak 'userId' field cannot be changed after creation.
-     */
-    function isStreakDataImmutable() {
-      return request.resource.data.userId == resource.data.userId;
-    }
-
-    /**
-     * @description Top-level container for all user data. Individual user documents
-     *              in this path are not directly accessible. Access is only granted
-     *              to the subcollections within each user's document.
-     * @path        /users/{userId}
-     * @allow       (none) - Direct access to a user's root document is blocked.
-     * @deny        A user `auth.uid: 'user_abc'` attempting to `get` or `list`
-     *              the `/users` collection.
-     * @principle   Disables user enumeration and prevents polluting the root user
-     *              document with data, reserving it as a namespace for subcollections.
-     */
+    // A user can read their own profile
+    // A user can create their own profile
+    // A user can update their own profile
+    // A user cannot delete their own profile
     match /users/{userId} {
-      allow get: if false;
-      allow list: if false;
-      allow create: if false;
-      allow update: if false;
+      allow read, create, update: if isOwner(userId);
       allow delete: if false;
     }
 
-    /**
-     * @description Secures a user's profile document. Only the owner can manage
-     *              their own profile.
-     * @path        /users/{userId}/profile/{profileId}
-     * @allow       An authenticated user `auth.uid: 'user_abc'` can `create` their own
-     *              profile document at `/users/user_abc/profile/some_doc_id`.
-     * @deny        An authenticated user `auth.uid: 'user_xyz'` attempting to `get` or
-     *              `update` a profile at `/users/user_abc/profile/some_doc_id`.
-     * @principle   Restricts access to a user's own private data tree and enforces
-     *              relational integrity on document creation and updates.
-     */
-    match /users/{userId}/profile/{profileId} {
-      allow get: if isOwner(userId);
-      allow list: if isOwner(userId);
-      allow create: if isOwner(userId) && hasValidUserProfileDataOnCreate(userId);
-      allow update: if isOwnerOfExistingDoc(userId) && isUserProfileDataImmutable();
-      allow delete: if isOwnerOfExistingDoc(userId);
-    }
-
-    /**
-     * @description Secures a user's collection of daily progress entries. Only the
-     *              owner can read, create, or manage their own progress logs.
-     * @path        /users/{userId}/dailyProgress/{dailyProgressId}
-     * @allow       An authenticated user `auth.uid: 'user_abc'` can `create` a new
-     *              progress log at `/users/user_abc/dailyProgress/day_1`.
-     * @deny        An authenticated user `auth.uid: 'user_xyz'` attempting to `list`
-     *              the collection at `/users/user_abc/dailyProgress`.
-     * @principle   Restricts access to a user's own private data tree and enforces
-     *              relational integrity on document creation and updates.
-     */
-    match /users/{userId}/dailyProgress/{dailyProgressId} {
-      allow get: if isOwner(userId);
-      allow list: if isOwner(userId);
-      allow create: if isOwner(userId) && hasValidDailyProgressDataOnCreate(userId);
-      allow update: if isOwnerOfExistingDoc(userId) && isDailyProgressDataImmutable();
-      allow delete: if isOwnerOfExistingDoc(userId);
-    }
-
-    /**
-     * @description Secures a user's streak document. Only the owner can manage
-     *              their own streak information.
-     * @path        /users/{userId}/streak/{streakId}
-     * @allow       An authenticated user `auth.uid: 'user_abc'` can `update` their own
-     *              streak document at `/users/user_abc/streak/main_streak`.
-     * @deny        An authenticated user `auth.uid: 'user_xyz'` attempting to `delete`
-     *              the streak document at `/users/user_abc/streak/main_streak`.
-     * @principle   Restricts access to a user's own private data tree and enforces
-     *              relational integrity on document creation and updates.
-     */
-    match /users/{userId}/streak/{streakId} {
-      allow get: if isOwner(userId);
-      allow list: if isOwner(userId);
-      allow create: if isOwner(userId) && hasValidStreakDataOnCreate(userId);
-      allow update: if isOwnerOfExistingDoc(userId) && isStreakDataImmutable();
-      allow delete: if isOwnerOfExistingDoc(userId);
+    // A user can manage their own progress entries
+    match /users/{userId}/progress/{progressId} {
+      allow read, list, create, update, delete: if isOwner(userId);
     }
   }
 }

@@ -20,7 +20,7 @@ export type Badge = {
   name: string;
   description: string;
   icon: string; // Lucide icon name
-  threshold: (data: StudentData) => boolean;
+  threshold: (userProfile: UserProfile, progressHistory: ProgressEntry[]) => boolean;
 };
 
 export type StudentData = {

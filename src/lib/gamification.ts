@@ -1,4 +1,4 @@
-import type { Badge, StudentData } from './types';
+import type { Badge, ProgressEntry, UserProfile } from './types';
 
 // --- XP & Leveling Constants ---
 export const XP_PER_HOUR = 100;
@@ -24,21 +24,21 @@ export const ALL_BADGES: Badge[] = [
     name: 'Streak Starter',
     description: 'Achieve a 3-day streak.',
     icon: 'Flame',
-    threshold: (data) => data.streak >= 3,
+    threshold: (data) => data.currentStreak >= 3,
   },
   {
     id: 'week-warrior',
     name: 'Week Warrior',
     description: 'Maintain a 7-day streak.',
     icon: 'Flame',
-    threshold: (data) => data.streak >= 7,
+    threshold: (data) => data.currentStreak >= 7,
   },
   {
     id: 'month-master',
     name: 'Month Master',
     description: 'Conquer a 30-day streak.',
     icon: 'Trophy',
-    threshold: (data) => data.streak >= 30,
+    threshold: (data) => data.currentStreak >= 30,
   },
   
   // Level Badges
@@ -70,21 +70,21 @@ export const ALL_BADGES: Badge[] = [
     name: 'First Step',
     description: 'Log your very first activity.',
     icon: 'Footprints',
-    threshold: (data) => data.progressHistory.length >= 1,
+    threshold: (data, progress) => progress.length >= 1,
   },
   {
     id: 'ten-hours',
     name: 'Diligent Student',
     description: 'Log a total of 10 hours.',
     icon: 'Clock',
-    threshold: (data) => data.progressHistory.reduce((sum, p) => sum + p.progress, 0) >= 10,
+    threshold: (data, progress) => progress.reduce((sum, p) => sum + p.progress, 0) >= 10,
   },
   {
     id: 'fifty-hours',
     name: 'Time Titan',
     description: 'Log a total of 50 hours.',
     icon: 'Clock',
-    threshold: (data) => data.progressHistory.reduce((sum, p) => sum + p.progress, 0) >= 50,
+    threshold: (data, progress) => progress.reduce((sum, p) => sum + p.progress, 0) >= 50,
   },
 
   // Consistency Badges
@@ -93,7 +93,7 @@ export const ALL_BADGES: Badge[] = [
     name: 'Weekend Learner',
     description: 'Log an activity on a Saturday or Sunday.',
     icon: 'Calendar',
-    threshold: (data) => data.progressHistory.some(p => {
+    threshold: (data, progress) => progress.some(p => {
         const day = new Date(p.date).getDay();
         return day === 6 || day === 0;
     }),

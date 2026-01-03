@@ -7,14 +7,14 @@ import {
   DialogContent,
   DialogDescription,
   DialogHeader,
-  DialogTitle,
   DialogFooter,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BookCheck, Sparkles, Lightbulb, Download } from 'lucide-react';
 import type { WeeklyPerformanceReviewOutput } from '@/ai/flows/weekly-performance-review';
 import { ScrollArea } from '../ui/scroll-area';
+import { DialogTrigger } from '@radix-ui/react-dialog';
+
 
 type WeeklyReportCardProps = {
   onGenerateReport: () => Promise<WeeklyPerformanceReviewOutput>;

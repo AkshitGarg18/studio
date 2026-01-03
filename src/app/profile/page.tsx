@@ -1,7 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { initialStudentData } from '@/lib/mock-data';
+import { useMemo } from 'react';
+import { doc } from 'firebase/firestore';
+import { useUser, useFirestore, useDoc, useCollection, useMemoFirebase } from '@/firebase';
+
 import { Header } from '@/components/streak-keeper/Header';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,6 +13,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Crown, Flame, Star, Trophy, Footprints, Clock, Calendar } from 'lucide-react';
 import type { LucideProps } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
+import { AuthGuard } from '@/components/auth/AuthGuard';
+import { Skeleton } from '@/components/ui/skeleton';
+import type { UserProfile } from '@/lib/types';
+import { collection } from 'firebase/firestore';
 
 const iconMap: { [key: string]: React.FC<LucideProps> } = {
     Flame,
@@ -22,17 +28,55 @@ const iconMap: { [key: string]: React.FC<LucideProps> } = {
     Calendar,
 };
 
-export default function ProfilePage() {
-  const [studentData] = useState(initialStudentData);
+function ProfilePageContent() {
+  const { user } = useUser();
+  const firestore = useFirestore();
 
-  const xpForCurrentLevel = getXpForLevel(studentData.level);
-  const xpForNextLevel = getXpForLevel(studentData.level + 1);
-  const xpProgress = studentData.xp - xpForCurrentLevel;
+  const userProfileRef = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return doc(firestore, 'users', user.uid);
+  }, [firestore, user]);
+
+  const { data: userProfile, isLoading: isProfileLoading } = useDoc<UserProfile>(userProfileRef);
+
+  const earnedBadges = useMemo(() => {
+    if (!userProfile) return [];
+    return ALL_BADGES.filter(badge => userProfile.badges.includes(badge.id));
+  }, [userProfile]);
+
+  const unearnedBadges = useMemo(() => {
+    if (!userProfile) return ALL_BADGES;
+    return ALL_BADGES.filter(badge => !userProfile.badges.includes(badge.id));
+  }, [userProfile]);
+
+  if (isProfileLoading || !userProfile) {
+    return (
+      <div className="flex min-h-screen w-full flex-col">
+        <Header />
+        <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8 lg:p-12">
+            <Card className="w-full max-w-4xl mx-auto">
+                <CardHeader className="text-center">
+                    <Skeleton className="w-24 h-24 rounded-full mx-auto mb-4" />
+                    <Skeleton className="h-8 w-48 mx-auto" />
+                    <Skeleton className="h-4 w-64 mx-auto mt-2" />
+                </CardHeader>
+                <CardContent className="space-y-8">
+                    <Skeleton className="h-24 w-full" />
+                    <Separator />
+                    <Skeleton className="h-48 w-full" />
+                </CardContent>
+            </Card>
+        </main>
+      </div>
+    );
+  }
+
+  const { level, xp, badges } = userProfile;
+  const xpForCurrentLevel = getXpForLevel(level);
+  const xpForNextLevel = getXpForLevel(level + 1);
+  const xpProgress = xp - xpForCurrentLevel;
   const xpToNext = xpForNextLevel - xpForCurrentLevel;
   const progressPercentage = xpToNext > 0 ? (xpProgress / xpToNext) * 100 : 100;
-
-  const earnedBadges = ALL_BADGES.filter(badge => studentData.badges.includes(badge.id));
-  const unearnedBadges = ALL_BADGES.filter(badge => !studentData.badges.includes(badge.id));
 
   return (
     <div className="flex min-h-screen w-full flex-col">
@@ -41,16 +85,15 @@ export default function ProfilePage() {
         <Card className="w-full max-w-4xl mx-auto">
           <CardHeader className="text-center">
             <Avatar className="w-24 h-24 mx-auto mb-4 border-4 border-primary shadow-lg">
-              <AvatarImage src="https://i.pravatar.cc/150?u=a042581f4e29026704d" />
-              <AvatarFallback>{studentData.name.charAt(0)}</AvatarFallback>
+              <AvatarImage src={user?.photoURL ?? undefined} />
+              <AvatarFallback>{userProfile.name?.charAt(0) ?? 'U'}</AvatarFallback>
             </Avatar>
-            <CardTitle className="text-3xl">{studentData.name}</CardTitle>
-            <CardDescription>{studentData.email}</CardDescription>
+            <CardTitle className="text-3xl">{userProfile.name}</CardTitle>
+            <CardDescription>{userProfile.email}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-8">
-            {/* Level and XP Section */}
             <div className="space-y-2 text-center">
-              <h2 className="text-xl font-semibold">Level {studentData.level}</h2>
+              <h2 className="text-xl font-semibold">Level {level}</h2>
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -59,18 +102,17 @@ export default function ProfilePage() {
                     </div>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>{studentData.xp.toLocaleString()} / {xpForNextLevel.toLocaleString()} XP</p>
+                    <p>{xp.toLocaleString()} / {xpForNextLevel.toLocaleString()} XP</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
               <p className="text-sm text-muted-foreground">
-                {xpForNextLevel - studentData.xp > 0 ? `${(xpForNextLevel - studentData.xp).toLocaleString()} XP to next level` : "Max level reached!"}
+                {xpForNextLevel - xp > 0 ? `${(xpForNextLevel - xp).toLocaleString()} XP to next level` : "Max level reached!"}
               </p>
             </div>
             
             <Separator />
 
-            {/* Badges Section */}
             <div>
               <h2 className="text-xl font-semibold mb-4 text-center">Earned Badges ({earnedBadges.length})</h2>
               {earnedBadges.length > 0 ? (
@@ -135,4 +177,13 @@ export default function ProfilePage() {
       </main>
     </div>
   );
+}
+
+
+export default function ProfilePage() {
+    return (
+        <AuthGuard>
+            <ProfilePageContent />
+        </AuthGuard>
+    )
 }

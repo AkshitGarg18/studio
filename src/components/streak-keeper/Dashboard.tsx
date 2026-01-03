@@ -1,39 +1,36 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import type { StudentData, ProgressEntry, Badge } from '@/lib/types';
+import type { ProgressEntry, UserProfile, Badge } from '@/lib/types';
 import { format, subDays, isYesterday, isToday, parseISO, endOfToday, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
-import { personalizedStreakGoal, type PersonalizedStreakGoalOutput } from '@/ai/flows/personalized-streak-goal';
-import { intelligentStreakLossNotification } from '@/ai/flows/intelligent-streak-loss-notification';
-import { getPerformanceTips } from '@/ai/flows/performance-improvement-tips';
-import { getWeeklyPerformanceReview, type WeeklyPerformanceReviewOutput } from '@/ai/flows/weekly-performance-review';
+import { useUser, useFirestore, useDoc, useCollection, useMemoFirebase } from '@/firebase';
+import { doc, collection, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { setDocumentNonBlocking, addDocumentNonBlocking } from '@/firebase';
 
-import { initialStudentData } from '@/lib/mock-data';
 import { ALL_BADGES, getXpForLevel, LEVEL_UP_XP_FACTOR, XP_PER_HOUR } from '@/lib/gamification';
 import { StreakCard } from './StreakCard';
 import { StreakChart } from './StreakChart';
 import { ProgressForm } from './ProgressForm';
-import { GoalCard } from './GoalCard';
-import { NotificationCard } from './NotificationCard';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Trophy, CalendarClock, Star } from 'lucide-react';
 import { SubjectPerformanceChart } from './SubjectPerformanceChart';
 import { WeeklyComparisonCard } from './WeeklyComparisonCard';
 import { WeeklyReportCard } from './WeeklyReportCard';
 import { LevelCard } from './LevelCard';
+import { Skeleton } from '../ui/skeleton';
 
 const generateChartData = (progressHistory: ProgressEntry[], days: number) => {
   const data: { date: string; progress: number }[] = [];
   const today = new Date();
-  const progressMap = new Map(progressHistory.map(p => [p.date, p.progress]));
+  const progressMap = new Map(progressHistory.map(p => [format(parseISO(p.date), 'yyyy-MM-dd'), p.progress]));
 
   for (let i = days - 1; i >= 0; i--) {
     const date = subDays(today, i);
     const dateString = format(date, 'yyyy-MM-dd');
     
     data.push({
-      date: date.toISOString(), // Use ISO string for reliable parsing
+      date: date.toISOString(),
       progress: progressMap.get(dateString) || 0,
     });
   }
@@ -61,54 +58,62 @@ const LastLogCard = ({ date }: { date: string | null }) => {
 
 
 export function Dashboard() {
-  const [studentData, setStudentData] = useState<StudentData>(initialStudentData);
-  const [goal, setGoal] = useState<PersonalizedStreakGoalOutput | null>(null);
-  const [isGoalLoading, setIsGoalLoading] = useState(false);
-  const [isNotificationLoading, setIsNotificationLoading] = useState(false);
+  const { user } = useUser();
+  const firestore = useFirestore();
   const { toast } = useToast();
   const [streakEndTime, setStreakEndTime] = useState<Date | null>(null);
 
+  const userProfileRef = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return doc(firestore, 'users', user.uid);
+  }, [firestore, user]);
+
+  const progressHistoryRef = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return collection(firestore, 'users', user.uid, 'progress');
+  }, [firestore, user]);
+  
+  const { data: userProfile, isLoading: isProfileLoading } = useDoc<UserProfile>(userProfileRef);
+  const { data: progressHistory, isLoading: isHistoryLoading } = useCollection<ProgressEntry>(progressHistoryRef);
+
+  const sortedHistory = useMemo(() => {
+    if (!progressHistory) return [];
+    return [...progressHistory].sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
+  }, [progressHistory]);
+
   useEffect(() => {
-    // Sort progress history on initial load
-    const sortedHistory = [...studentData.progressHistory].sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
+    if (!userProfile || !sortedHistory) {
+      setStreakEndTime(null);
+      return;
+    }
+
+    const { currentStreak } = userProfile;
     const lastEntry = sortedHistory[0];
 
-    if (studentData.streak > 0 && lastEntry) {
+    if (currentStreak > 0 && lastEntry) {
       const lastEntryDate = parseISO(lastEntry.date);
       if (isYesterday(lastEntryDate)) {
-        // If the last entry was yesterday, the streak ends at midnight today.
         setStreakEndTime(endOfToday());
       } else {
-        // If the last entry was today or earlier, no immediate deadline.
         setStreakEndTime(null);
       }
     } else {
       setStreakEndTime(null);
     }
-    
-    setStudentData(prev => ({ ...prev, progressHistory: sortedHistory }));
-  }, [studentData.streak]);
+  }, [userProfile, sortedHistory]);
 
-  const handleProgressSubmit = (data: { progress: number; activity: string; subject: string }) => {
+  const handleProgressSubmit = async (data: { progress: number; activity: string; subject: string }) => {
+    if (!user || !firestore || !userProfile) return;
+
     const todayStr = format(new Date(), 'yyyy-MM-dd');
-    
-    // Create a new progress entry
-    const newProgressEntry: ProgressEntry = {
-      date: todayStr,
-      ...data,
-      userId: studentData.id,
-    };
+    const lastEntry = sortedHistory.length > 0 ? sortedHistory[0] : null;
 
-    const updatedHistory = [newProgressEntry, ...studentData.progressHistory.filter(p => p.date !== todayStr)];
-
-    const lastEntry = studentData.progressHistory.length > 0 ? studentData.progressHistory[0] : null;
-
-    let newStreak = studentData.streak;
+    let newStreak = userProfile.currentStreak;
     
     if (lastEntry) {
       const lastEntryDate = parseISO(lastEntry.date);
       if (isToday(lastEntryDate)) {
-        // Already logged today, streak doesn't change
+        // Already logged today, streak doesn't increase
       } else if (isYesterday(lastEntryDate)) {
         newStreak++;
       } else {
@@ -118,11 +123,10 @@ export function Dashboard() {
       newStreak = 1; // First entry
     }
 
-    const newLongestStreak = Math.max(studentData.longestStreak, newStreak);
+    const newLongestStreak = Math.max(userProfile.longestStreak, newStreak);
     
-    // XP and Level Logic
-    let newXp = studentData.xp + (data.progress * XP_PER_HOUR);
-    let newLevel = studentData.level;
+    let newXp = userProfile.xp + (data.progress * XP_PER_HOUR);
+    let newLevel = userProfile.level;
     const xpForNextLevel = getXpForLevel(newLevel + 1);
 
     if (newXp >= xpForNextLevel) {
@@ -132,14 +136,13 @@ export function Dashboard() {
         description: `Congratulations! You've reached Level ${newLevel}.`,
       });
     }
+    
+    const preUpdateData = { ...userProfile, currentStreak: newStreak, longestStreak: newLongestStreak, progressHistory: sortedHistory, level: newLevel, xp: newXp };
 
-    const preUpdateData = { ...studentData, streak: newStreak, longestStreak: newLongestStreak, progressHistory: updatedHistory, level: newLevel, xp: newXp };
-
-    // Badge Logic
     const newlyAwardedBadges: Badge[] = [];
-    let updatedBadges = [...studentData.badges];
+    let updatedBadges = [...userProfile.badges];
     ALL_BADGES.forEach(badge => {
-        if (!updatedBadges.includes(badge.id) && badge.threshold(preUpdateData)) {
+        if (!updatedBadges.includes(badge.id) && badge.threshold(preUpdateData, sortedHistory)) {
             newlyAwardedBadges.push(badge);
             updatedBadges.push(badge.id);
         }
@@ -153,139 +156,92 @@ export function Dashboard() {
             });
         });
     }
+    
+    // Create new progress entry
+    const newProgressEntry = {
+      date: todayStr,
+      ...data,
+      userId: user.uid,
+    };
 
-    setStudentData(prev => ({
-      ...prev,
-      streak: newStreak,
-      longestStreak: newLongestStreak,
-      progressHistory: updatedHistory,
-      level: newLevel,
-      xp: newXp,
-      badges: updatedBadges,
-    }));
+    const newProgressDocRef = doc(collection(firestore, `users/${user.uid}/progress`));
+    setDocumentNonBlocking(newProgressDocRef, newProgressEntry, { merge: true });
 
-    setStreakEndTime(null); // Progress logged, so remove timer
+    // Update user profile
+    const userProfileUpdate = {
+        currentStreak: newStreak,
+        longestStreak: newLongestStreak,
+        lastActivityDate: serverTimestamp(),
+        level: newLevel,
+        xp: newXp,
+        badges: updatedBadges
+    };
+    setDocumentNonBlocking(userProfileRef!, userProfileUpdate, { merge: true });
+
+    setStreakEndTime(null);
     
     toast({
       title: "Progress Logged!",
       description: `You've earned ${data.progress * XP_PER_HOUR} XP.`,
     });
   };
-  
-  const handleGetGoal = async () => {
-    setIsGoalLoading(true);
-    try {
-      const historicalProgressData = studentData.progressHistory.map(p => ({
-        date: p.date,
-        progress: p.progress,
-      }));
-      const result = await personalizedStreakGoal({ studentId: studentData.id, historicalProgressData });
-      setGoal(result);
-    } catch (error) {
-      console.error('Error fetching personalized goal:', error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Could not generate a personalized goal.",
-      });
-    }
-    setIsGoalLoading(false);
-  };
-  
-  const handleSimulateNotification = async () => {
-    setIsNotificationLoading(true);
-    try {
-      const lastActivity = studentData.progressHistory[0]?.date || format(subDays(new Date(), 3), 'yyyy-MM-dd');
-      const result = await intelligentStreakLossNotification({
-        studentId: studentData.id,
-        streakLength: studentData.streak,
-        lastActivity: lastActivity,
-        notificationHistory: [],
-      });
-
-      toast({
-        title: `Simulated ${result.deliveryMethod} Notification`,
-        description: result.notificationMessage,
-      });
-
-    } catch (error) {
-      console.error('Error simulating notification:', error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Could not simulate the notification.",
-      });
-    }
-    setIsNotificationLoading(false);
-  };
 
   const handleGetPerformanceTips = async (currentWeekProgress: number, previousWeekProgress: number) => {
-    try {
-      const recentActivities = studentData.progressHistory.slice(0, 10).map(p => ({
-        subject: p.subject,
-        activity: p.activity,
-      }));
-      const result = await getPerformanceTips({
-        currentWeekProgress,
-        previousWeekProgress,
-        recentActivities,
-      });
-      return result;
-    } catch (error) {
-      console.error('Error fetching performance tips:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Could not generate performance tips.',
-      });
-      return { tips: ['Sorry, we could not generate tips at this moment. Please try again later.'] };
-    }
+    return { tips: [] };
   };
 
   const weeklyStats = useMemo(() => {
+    if (!sortedHistory) return { currentWeekProgress: 0, lastWeekProgress: 0, currentWeekEntries: [], lastWeekEntries: [] };
+    
     const today = new Date();
-    const startOfThisWeek = startOfWeek(today, { weekStartsOn: 1 }); // Monday
+    const startOfThisWeek = startOfWeek(today, { weekStartsOn: 1 });
     const endOfThisWeek = endOfWeek(today, { weekStartsOn: 1 });
     const startOfLastWeek = startOfWeek(subDays(today, 7), { weekStartsOn: 1 });
     const endOfLastWeek = endOfWeek(subDays(today, 7), { weekStartsOn: 1 });
 
-    const currentWeekProgress = studentData.progressHistory
+    const currentWeekProgress = sortedHistory
       .filter(p => isWithinInterval(parseISO(p.date), { start: startOfThisWeek, end: endOfThisWeek }))
       .reduce((sum, p) => sum + p.progress, 0);
 
-    const currentWeekEntries = studentData.progressHistory.filter(p => isWithinInterval(parseISO(p.date), { start: startOfThisWeek, end: endOfThisWeek }));
+    const currentWeekEntries = sortedHistory.filter(p => isWithinInterval(parseISO(p.date), { start: startOfThisWeek, end: endOfThisWeek }));
     
-    const lastWeekProgress = studentData.progressHistory
+    const lastWeekProgress = sortedHistory
       .filter(p => isWithinInterval(parseISO(p.date), { start: startOfLastWeek, end: endOfLastWeek }))
       .reduce((sum, p) => sum + p.progress, 0);
 
-    const lastWeekEntries = studentData.progressHistory.filter(p => isWithinInterval(parseISO(p.date), { start: startOfLastWeek, end: endOfLastWeek }));
+    const lastWeekEntries = sortedHistory.filter(p => isWithinInterval(parseISO(p.date), { start: startOfLastWeek, end: endOfLastWeek }));
 
     return { currentWeekProgress, lastWeekProgress, currentWeekEntries, lastWeekEntries };
-  }, [studentData.progressHistory]);
+  }, [sortedHistory]);
 
-  const handleGetWeeklyReport = async (): Promise<WeeklyPerformanceReviewOutput> => {
-    try {
-      const result = await getWeeklyPerformanceReview({
-        currentWeekProgress: weeklyStats.currentWeekEntries,
-        previousWeekProgress: weeklyStats.lastWeekEntries,
-      });
-      return result;
-    } catch (error) {
-      console.error('Error fetching weekly report:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Could not generate the weekly report.',
-      });
-      return { reportSummary: 'Error generating report.', nextWeekSuggestions: [] };
-    }
+  const handleGetWeeklyReport = async () => {
+    return { reportSummary: 'Not implemented', nextWeekSuggestions: [] };
   };
 
-  const chartData7Days = generateChartData(studentData.progressHistory, 7);
-  const chartData30Days = generateChartData(studentData.progressHistory, 30);
-  const longestStreakEmoji = studentData.longestStreak > 10 ? '🏆' : studentData.longestStreak > 5 ? '🏅' : '🎉';
-  const lastLogDate = studentData.progressHistory.length > 0 ? studentData.progressHistory[0].date : null;
+  if (isProfileLoading || isHistoryLoading) {
+    return (
+        <div className="grid grid-cols-1 gap-4 md:gap-8 lg:grid-cols-5 p-4 md:p-6 lg:p-8">
+            <div className="lg:col-span-3 grid auto-rows-min gap-4 md:gap-8">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <Skeleton className="h-[125px] w-full" />
+                    <Skeleton className="h-[125px] w-full" />
+                    <Skeleton className="h-[125px] w-full" />
+                </div>
+                <Skeleton className="h-[300px] w-full" />
+                <Skeleton className="h-[300px] w-full" />
+            </div>
+            <div className="lg:col-span-2 grid auto-rows-min gap-4 md:gap-8">
+                <Skeleton className="h-[450px] w-full" />
+                <Skeleton className="h-[300px] w-full" />
+            </div>
+        </div>
+    );
+  }
+
+  const chartData7Days = generateChartData(sortedHistory, 7);
+  const chartData30Days = generateChartData(sortedHistory, 30);
+  const longestStreakEmoji = (userProfile?.longestStreak ?? 0) > 10 ? '🏆' : (userProfile?.longestStreak ?? 0) > 5 ? '🏅' : '🎉';
+  const lastLogDate = sortedHistory.length > 0 ? sortedHistory[0].date : null;
 
   return (
     <div className="grid grid-cols-1 gap-4 md:gap-8 lg:grid-cols-5">
@@ -293,7 +249,7 @@ export function Dashboard() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <StreakCard 
             title="Current Streak" 
-            streak={studentData.streak}
+            streak={userProfile?.currentStreak ?? 0}
             streakEndDate={streakEndTime}
           />
           <Card>
@@ -302,13 +258,13 @@ export function Dashboard() {
               <Trophy className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{studentData.longestStreak} days {longestStreakEmoji}</div>
+              <div className="text-2xl font-bold">{(userProfile?.longestStreak ?? 0)} days {longestStreakEmoji}</div>
               <p className="text-xs text-muted-foreground">Your personal best!</p>
             </CardContent>
           </Card>
           <LevelCard
-            level={studentData.level}
-            xp={studentData.xp}
+            level={userProfile?.level ?? 1}
+            xp={userProfile?.xp ?? 0}
           />
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -316,7 +272,7 @@ export function Dashboard() {
             <WeeklyComparisonCard 
                 currentWeekHours={weeklyStats.currentWeekProgress}
                 previousWeekHours={weeklyStats.lastWeekProgress}
-                onGetTips={handleGetPerformanceTips}
+                onGetTips={() => handleGetPerformanceTips(weeklyStats.currentWeekProgress, weeklyStats.lastWeekProgress)}
             />
         </div>
         <StreakChart 
@@ -333,17 +289,8 @@ export function Dashboard() {
 
       <div className="lg:col-span-2 grid auto-rows-min gap-4 md:gap-8">
         <ProgressForm onSubmit={handleProgressSubmit} />
-        <SubjectPerformanceChart progressHistory={studentData.progressHistory} />
+        <SubjectPerformanceChart progressHistory={sortedHistory} />
         <WeeklyReportCard onGenerateReport={handleGetWeeklyReport} />
-        <GoalCard 
-          goal={goal} 
-          isLoading={isGoalLoading} 
-          onGetGoal={handleGetGoal} 
-        />
-        <NotificationCard
-          isLoading={isNotificationLoading}
-          onSimulate={handleSimulateNotification}
-        />
       </div>
     </div>
   );
