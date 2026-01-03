@@ -12,14 +12,13 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { ArrowDown, ArrowUp, CalendarRange, Lightbulb, Sparkles } from 'lucide-react';
-import type { getPerformanceTips, PerformanceTipsOutput } from '@/ai/flows/performance-improvement-tips';
-import type { ProgressEntry } from '@/lib/types';
+import type { PerformanceTipsOutput } from '@/ai/flows/performance-improvement-tips';
 
 
 type WeeklyComparisonCardProps = {
   currentWeekHours: number;
   previousWeekHours: number;
-  onGetTips: (currentWeekProgress: number, previousWeekProgress: number) => Promise<PerformanceTipsOutput>;
+  onGetTips: () => Promise<PerformanceTipsOutput>;
 };
 
 export function WeeklyComparisonCard({
@@ -45,7 +44,7 @@ export function WeeklyComparisonCard({
 
   const handleGetTips = async () => {
     setIsLoading(true);
-    const result = await onGetTips(currentWeekHours, previousWeekHours);
+    const result = await onGetTips();
     setTips(result);
     setIsLoading(false);
   };

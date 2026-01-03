@@ -1,19 +1,19 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { ProgressEntry, UserProfile, Badge, Notification } from '@/lib/types';
 import { format, subDays, isYesterday, isToday, parseISO, endOfToday, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { useUser, useFirestore, useDoc, useCollection, useMemoFirebase } from '@/firebase';
-import { doc, collection, writeBatch, serverTimestamp, query, where, getDocs, updateDoc, addDoc } from 'firebase/firestore';
-import { setDocumentNonBlocking, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
+import { doc, collection, serverTimestamp } from 'firebase/firestore';
+import { setDocumentNonBlocking, addDocumentNonBlocking } from '@/firebase';
 
-import { ALL_BADGES, getXpForLevel, LEVEL_UP_XP_FACTOR, XP_PER_HOUR } from '@/lib/gamification';
+import { ALL_BADGES, getXpForLevel, XP_PER_HOUR } from '@/lib/gamification';
 import { StreakCard } from './StreakCard';
 import { StreakChart } from './StreakChart';
 import { ProgressForm } from './ProgressForm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Trophy, CalendarClock, Star } from 'lucide-react';
+import { Trophy, CalendarClock } from 'lucide-react';
 import { SubjectPerformanceChart } from './SubjectPerformanceChart';
 import { WeeklyComparisonCard } from './WeeklyComparisonCard';
 import { WeeklyReportCard } from './WeeklyReportCard';
@@ -21,10 +21,13 @@ import { LevelCard } from './LevelCard';
 import { Skeleton } from '../ui/skeleton';
 import { ShareBadgeDialog } from './ShareBadgeDialog';
 import { Button } from '../ui/button';
-import { intelligentStreakLossNotification, type NotificationInput, type NotificationOutput } from '@/ai/flows/intelligent-streak-loss-notification';
+import { intelligentStreakLossNotification, type NotificationInput } from '@/ai/flows/intelligent-streak-loss-notification';
 import { NotificationCard } from './NotificationCard';
 import { GoalCard } from './GoalCard';
 import { personalizedStreakGoal, type PersonalizedStreakGoalInput, type PersonalizedStreakGoalOutput } from '@/ai/flows/personalized-streak-goal';
+import { getPerformanceTips, type PerformanceTipsInput, type PerformanceTipsOutput } from '@/ai/flows/performance-improvement-tips';
+import { getWeeklyPerformanceReview, type WeeklyPerformanceReviewInput, type WeeklyPerformanceReviewOutput } from '@/ai/flows/weekly-performance-review';
+
 
 const generateChartData = (progressHistory: ProgressEntry[], days: number) => {
   const data: { date: string; progress: number }[] = [];
@@ -213,11 +216,6 @@ export function Dashboard() {
         title: "Progress Logged!",
         description: `You've earned ${addedXp} XP for studying ${data.subject}.`,
     });
-};
-
-
-  const handleGetPerformanceTips = async (currentWeekProgress: number, previousWeekProgress: number) => {
-    return { tips: [] };
   };
 
   const weeklyStats = useMemo(() => {
@@ -244,8 +242,29 @@ export function Dashboard() {
     return { currentWeekProgress, lastWeekProgress, currentWeekEntries, lastWeekEntries };
   }, [sortedHistory]);
 
-  const handleGetWeeklyReport = async () => {
-    return { reportSummary: 'Not implemented', nextWeekSuggestions: [] };
+  const handleGetPerformanceTips = async (): Promise<PerformanceTipsOutput> => {
+    if (!progressHistory) return { tips: [] };
+    
+    const recentActivities = progressHistory.slice(0, 5).map(p => ({ subject: p.subject, activity: p.activity }));
+
+    const input: PerformanceTipsInput = {
+      currentWeekProgress: weeklyStats.currentWeekProgress,
+      previousWeekProgress: weeklyStats.lastWeekProgress,
+      recentActivities: recentActivities,
+    };
+    return await getPerformanceTips(input);
+  };
+
+
+  const handleGetWeeklyReport = async (): Promise<WeeklyPerformanceReviewOutput> => {
+     if (!progressHistory) return { reportSummary: 'No data available to generate a report.', nextWeekSuggestions: [] };
+
+    const input: WeeklyPerformanceReviewInput = {
+      currentWeekProgress: weeklyStats.currentWeekEntries,
+      previousWeekProgress: weeklyStats.lastWeekEntries,
+    };
+
+    return await getWeeklyPerformanceReview(input);
   };
 
   const handleSimulateNotification = async () => {
@@ -362,7 +381,7 @@ export function Dashboard() {
               <WeeklyComparisonCard 
                   currentWeekHours={weeklyStats.currentWeekProgress}
                   previousWeekHours={weeklyStats.lastWeekProgress}
-                  onGetTips={() => handleGetPerformanceTips(weeklyStats.currentWeekProgress, weeklyStats.lastWeekProgress)}
+                  onGetTips={handleGetPerformanceTips}
               />
           </div>
           <StreakChart 
