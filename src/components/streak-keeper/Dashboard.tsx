@@ -29,7 +29,13 @@ import { personalizedStreakGoal, type PersonalizedStreakGoalInput, type Personal
 const generateChartData = (progressHistory: ProgressEntry[], days: number) => {
   const data: { date: string; progress: number }[] = [];
   const today = new Date();
-  const progressMap = new Map(progressHistory.map(p => [format(parseISO(p.date), 'yyyy-MM-dd'), p.progress]));
+  
+  // Create a map to store total progress for each day
+  const progressMap = new Map<string, number>();
+  progressHistory.forEach(p => {
+    const dateKey = format(parseISO(p.date), 'yyyy-MM-dd');
+    progressMap.set(dateKey, (progressMap.get(dateKey) || 0) + p.progress);
+  });
 
   for (let i = days - 1; i >= 0; i--) {
     const date = subDays(today, i);
@@ -92,8 +98,8 @@ export function Dashboard() {
     return [...progressHistory].sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
   }, [progressHistory]);
 
-  const chartData7Days = useMemo(() => generateChartData(sortedHistory, 7), [sortedHistory]);
-  const chartData30Days = useMemo(() => generateChartData(sortedHistory, 30), [sortedHistory]);
+  const chartData7Days = useMemo(() => generateChartData(progressHistory || [], 7), [progressHistory]);
+  const chartData30Days = useMemo(() => generateChartData(progressHistory || [], 30), [progressHistory]);
 
   useEffect(() => {
     if (!userProfile || !sortedHistory) {
@@ -122,18 +128,15 @@ export function Dashboard() {
   };
 
   const handleProgressSubmit = async (data: { progress: number; activity: string; subject: string }) => {
-    if (!user || !firestore || !userProfile || !progressHistoryRef) return;
+    if (!user || !firestore || !userProfile || !progressHistory || !progressHistoryRef) return;
   
     const todayStr = format(new Date(), 'yyyy-MM-dd');
     const lastEntry = sortedHistory.length > 0 ? sortedHistory[0] : null;
     let newStreak = userProfile.currentStreak;
   
-    const progressQuery = query(progressHistoryRef, where('date', '==', todayStr));
-    const todayEntriesSnapshot = await getDocs(progressQuery);
-    const existingTodayEntry = todayEntriesSnapshot.docs.length > 0 
-      ? { id: todayEntriesSnapshot.docs[0].id, ...todayEntriesSnapshot.docs[0].data() } as ProgressEntry 
-      : null;
-      
+    const todayEntries = progressHistory.filter(p => p.date === todayStr);
+    const existingTodayEntry = todayEntries.length > 0 ? todayEntries[0] : null;
+          
     if (!existingTodayEntry) {
       // No entry for today, this is a new log for the day
       if (lastEntry) {
@@ -166,14 +169,14 @@ export function Dashboard() {
     }
   
     // Badge calculation
-    const allProgressEntries = [...sortedHistory];
+    const allProgressEntries = [...progressHistory];
     if (existingTodayEntry) {
         const index = allProgressEntries.findIndex(p => p.id === existingTodayEntry.id);
         if (index !== -1) {
             allProgressEntries[index].progress += data.progress;
         }
     } else {
-        allProgressEntries.unshift({ ...data, date: todayStr, userId: user.uid });
+        allProgressEntries.unshift({ ...data, date: todayStr, userId: user.uid, id: 'temp' });
     }
 
     const preUpdateData = { ...userProfile, currentStreak: newStreak, longestStreak: newLongestStreak, level: newLevel, xp: newXp };
@@ -206,7 +209,6 @@ export function Dashboard() {
         const updatedProgressData = {
           progress: existingTodayEntry.progress + data.progress,
           activity: `${existingTodayEntry.activity}; ${data.activity}`, // Combine activities
-          subject: data.subject, // Or combine subjects if needed
         };
         updateDocumentNonBlocking(progressDocRef, updatedProgressData);
     } else {
