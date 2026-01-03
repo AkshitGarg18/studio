@@ -97,8 +97,8 @@ export function Dashboard() {
     return [...progressHistory].sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
   }, [progressHistory]);
 
-  const chartData7Days = useMemo(() => generateChartData(sortedHistory, 7), [sortedHistory]);
-  const chartData30Days = useMemo(() => generateChartData(sortedHistory, 30), [sortedHistory]);
+  const chartData7Days = useMemo(() => generateChartData(progressHistory ?? [], 7), [progressHistory]);
+  const chartData30Days = useMemo(() => generateChartData(progressHistory ?? [], 30), [progressHistory]);
 
   useEffect(() => {
     if (!userProfile || !sortedHistory) {
@@ -130,27 +130,28 @@ export function Dashboard() {
     if (!user || !firestore || !userProfile || !progressHistory || !progressHistoryRef) return;
 
     const todayStr = format(new Date(), 'yyyy-MM-dd');
-    const lastEntry = sortedHistory.length > 0 ? sortedHistory[0] : null;
-    let newStreak = userProfile.currentStreak;
-
-    const todayEntries = progressHistory.filter(p => p.date === todayStr);
+    const todayEntries = progressHistory.filter(p => format(parseISO(p.date), 'yyyy-MM-dd') === todayStr);
     const existingTodayEntry = todayEntries.length > 0 ? todayEntries[0] : null;
 
-    if (!existingTodayEntry) {
-        // No entry for today, this is a new log for the day
-        if (lastEntry) {
-            const lastEntryDate = parseISO(lastEntry.date);
-            if (isYesterday(lastEntryDate)) {
-                newStreak++;
-            } else if (!isToday(lastEntryDate)) {
-                newStreak = 1; // Streak is broken
-            }
-        } else {
-            newStreak = 1; // First entry ever
+    let newStreak = userProfile.currentStreak;
+    const lastEntry = sortedHistory.length > 0 ? sortedHistory[0] : null;
+
+    let finalProgressHours = data.progress;
+    if (existingTodayEntry) {
+        finalProgressHours += existingTodayEntry.progress;
+    }
+
+    // Streak logic
+    if (!lastEntry || !isToday(parseISO(lastEntry.date))) { // First log of the day
+        if (lastEntry && isYesterday(parseISO(lastEntry.date))) {
+            newStreak++;
+        } else if (lastEntry && !isYesterday(parseISO(lastEntry.date))) {
+            newStreak = 1;
+        } else if (!lastEntry) {
+            newStreak = 1;
         }
     }
-    // If there's an existing entry, streak is already set for the day, no change.
-
+    
     const newLongestStreak = Math.max(userProfile.longestStreak, newStreak);
     const addedXp = data.progress * XP_PER_HOUR;
     let newXp = userProfile.xp + addedXp;
@@ -167,22 +168,22 @@ export function Dashboard() {
         xpForNextLevel = getXpForLevel(newLevel + 1);
     }
 
-    // Badge calculation
-    const newProgressForBadgeCheck: ProgressEntry = {
-        ...data,
-        date: todayStr,
-        userId: user.uid,
-        id: 'temp',
-    };
+    // --- Badge Calculation Logic ---
+    const allProgressEntriesForBadges = [...progressHistory];
+    if (existingTodayEntry && existingTodayEntry.id) {
+        const index = allProgressEntriesForBadges.findIndex(p => p.id === existingTodayEntry.id);
+        if (index !== -1) {
+            allProgressEntriesForBadges[index] = { ...allProgressEntriesForBadges[index], progress: finalProgressHours };
+        }
+    } else {
+        allProgressEntriesForBadges.unshift({ ...data, date: todayStr, userId: user.uid, id: 'temp', progress: finalProgressHours });
+    }
 
-    // Create a temporary, updated history for badge checking
-    const allProgressEntries = [newProgressForBadgeCheck, ...progressHistory];
-    
-    const preUpdateData = { ...userProfile, currentStreak: newStreak, longestStreak: newLongestStreak, level: newLevel, xp: newXp };
+    const preUpdateData = { ...userProfile, currentStreak: newStreak, longestStreak: newLongestStreak, level: newLevel, xp: newXp, badges: userProfile.badges };
     const newlyAwardedBadges: Badge[] = [];
     let updatedBadges = [...userProfile.badges];
     ALL_BADGES.forEach(badge => {
-        if (!updatedBadges.includes(badge.id) && badge.threshold(preUpdateData, allProgressEntries)) {
+        if (!updatedBadges.includes(badge.id) && badge.threshold(preUpdateData, allProgressEntriesForBadges)) {
             newlyAwardedBadges.push(badge);
             updatedBadges.push(badge.id);
         }
@@ -202,16 +203,17 @@ export function Dashboard() {
         });
     }
 
-    // Firestore updates
+    // --- Firestore Update Logic ---
     if (existingTodayEntry && existingTodayEntry.id) {
         const progressDocRef = doc(firestore, `users/${user.uid}/progress`, existingTodayEntry.id);
         const updatedProgressData = {
-            progress: existingTodayEntry.progress + data.progress,
+            progress: finalProgressHours,
             activity: `${existingTodayEntry.activity}; ${data.activity}`, // Combine activities
+            subject: data.subject, // Can decide how to handle subject updates, here we just take the new one
         };
         updateDocumentNonBlocking(progressDocRef, updatedProgressData);
     } else {
-        const newProgressEntry = { date: todayStr, ...data, userId: user.uid };
+        const newProgressEntry = { ...data, date: todayStr, userId: user.uid };
         addDocumentNonBlocking(progressHistoryRef, newProgressEntry);
     }
 
@@ -399,7 +401,7 @@ export function Dashboard() {
 
         <div className="lg:col-span-2 grid auto-rows-min gap-4 md:gap-8">
           <ProgressForm onSubmit={handleProgressSubmit} />
-          <SubjectPerformanceChart progressHistory={sortedHistory} />
+          <SubjectPerformanceChart progressHistory={progressHistory ?? []} />
           <WeeklyReportCard onGenerateReport={handleGetWeeklyReport} />
           <NotificationCard 
             isLoading={isSimulatingNotification}
