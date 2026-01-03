@@ -3,95 +3,119 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth, useUser, useFirestore } from '@/firebase';
-import { GoogleAuthProvider, signInWithRedirect, getRedirectResult } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
+import { useToast } from '@/hooks/use-toast';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm } from 'react-hook-form';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
 import { Flame } from 'lucide-react';
 import type { UserProfile } from '@/lib/types';
 
-const GoogleIcon = () => (
-    <svg className="mr-2 h-4 w-4" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512">
-      <path
-        fill="currentColor"
-        d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 126 23.4 172.9 61.9l-76.1 76.1c-24.1-23.4-58.2-37.9-96.8-37.9-80.9 0-146.5 65.6-146.5 146.5s65.6 146.5 146.5 146.5c89.9 0 130.6-67.2 135.2-101.3H248v-90.9h239.3c5.3 22.9 8.7 48.8 8.7 78.5z"
-      />
-    </svg>
-  );
+const signUpSchema = z.object({
+  name: z.string().min(2, { message: "Name must be at least 2 characters." }),
+  email: z.string().email({ message: "Please enter a valid email." }),
+  password: z.string().min(6, { message: "Password must be at least 6 characters." }),
+});
+
+const signInSchema = z.object({
+  email: z.string().email({ message: "Please enter a valid email." }),
+  password: z.string().min(1, { message: "Password is required." }),
+});
 
 export default function LoginPage() {
   const router = useRouter();
   const auth = useAuth();
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
-  const [isProcessingSignIn, setIsProcessingSignIn] = useState(true);
+  const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(false);
+
+  const signInForm = useForm<z.infer<typeof signInSchema>>({
+    resolver: zodResolver(signInSchema),
+    defaultValues: { email: "", password: "" },
+  });
+
+  const signUpForm = useForm<z.infer<typeof signUpSchema>>({
+    resolver: zodResolver(signUpSchema),
+    defaultValues: { name: "", email: "", password: "" },
+  });
 
   useEffect(() => {
-    // This effect handles all authentication logic on this page
-    const processAuth = async () => {
-      // If services aren't ready, wait.
-      if (!auth || !firestore || isUserLoading) {
-        return;
-      }
+    if (!isUserLoading && user) {
+      router.push('/');
+    }
+  }, [user, isUserLoading, router]);
 
-      // If there's already a user session, redirect to home.
-      if (user) {
-        router.push('/');
-        return;
-      }
+  const handleSignUp = async (values: z.infer<typeof signUpSchema>) => {
+    if (!auth || !firestore) return;
+    setIsLoading(true);
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
+      const loggedInUser = userCredential.user;
 
-      // If there's no user, try to get the redirect result.
-      try {
-        const result = await getRedirectResult(auth);
-        if (result && result.user) {
-          // User has just signed in via redirect.
-          const loggedInUser = result.user;
-          const userDocRef = doc(firestore, 'users', loggedInUser.uid);
-          const userDoc = await getDoc(userDocRef);
+      // Update Firebase Auth profile
+      await updateProfile(loggedInUser, { displayName: values.name });
 
-          if (!userDoc.exists()) {
-            // Create a new profile for the new user.
-            const newUserProfile: UserProfile = {
-              id: loggedInUser.uid,
-              name: loggedInUser.displayName,
-              email: loggedInUser.email,
-              currentStreak: 0,
-              longestStreak: 0,
-              lastActivityDate: null,
-              level: 1,
-              xp: 0,
-              badges: [],
-            };
-            await setDoc(userDocRef, newUserProfile);
-          }
-          // After profile creation/check, redirect to home.
-          router.push('/');
-        } else {
-          // No user session and no redirect result, so it's a fresh login page.
-          // Stop processing and show the login button.
-          setIsProcessingSignIn(false);
-        }
-      } catch (error) {
-        console.error('Error during sign-in redirect:', error);
-        setIsProcessingSignIn(false); // Stop processing on error
-      }
-    };
-
-    processAuth();
-  }, [auth, firestore, user, isUserLoading, router]);
-
-  const handleSignIn = async () => {
-    if (!auth) return;
-    const provider = new GoogleAuthProvider();
-    await signInWithRedirect(auth, provider);
+      // Create Firestore user profile
+      const userDocRef = doc(firestore, 'users', loggedInUser.uid);
+      const newUserProfile: UserProfile = {
+        id: loggedInUser.uid,
+        name: values.name,
+        email: values.email,
+        currentStreak: 0,
+        longestStreak: 0,
+        lastActivityDate: null,
+        level: 1,
+        xp: 0,
+        badges: [],
+      };
+      await setDoc(userDocRef, newUserProfile);
+      
+      toast({ title: "Account Created!", description: "Welcome to Streak Keeper." });
+      // The useEffect will handle the redirect
+    } catch (error: any) {
+      console.error('Error during sign-up:', error);
+      toast({
+        variant: "destructive",
+        title: "Sign Up Failed",
+        description: error.message || "Could not create your account.",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
-  
-  if (isUserLoading || isProcessingSignIn) {
+
+  const handleSignIn = async (values: z.infer<typeof signInSchema>) => {
+    if (!auth) return;
+    setIsLoading(true);
+    try {
+      await signInWithEmailAndPassword(auth, values.email, values.password);
+      toast({ title: "Signed In", description: "Welcome back!" });
+      // The useEffect will handle the redirect
+    } catch (error: any) {
+      console.error('Error during sign-in:', error);
+      toast({
+        variant: "destructive",
+        title: "Sign In Failed",
+        description: error.message || "Could not sign you in. Please check your credentials.",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (isUserLoading || user) {
     return (
-        <div className="flex min-h-screen items-center justify-center bg-background">
-            <Flame className="h-12 w-12 animate-pulse text-primary" />
-        </div>
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Flame className="h-12 w-12 animate-pulse text-primary" />
+      </div>
     );
   }
 
@@ -101,13 +125,98 @@ export default function LoginPage() {
         <CardHeader className="text-center">
           <Flame className="mx-auto h-10 w-10 text-primary" />
           <CardTitle className="mt-4 text-2xl">Welcome to Streak Keeper</CardTitle>
-          <CardDescription>Sign in to track your progress and build your streak.</CardDescription>
+          <CardDescription>Track your progress and build your streak.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Button onClick={handleSignIn} className="w-full">
-            <GoogleIcon />
-            Sign in with Google
-          </Button>
+          <Tabs defaultValue="signin">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="signin">Sign In</TabsTrigger>
+              <TabsTrigger value="signup">Sign Up</TabsTrigger>
+            </TabsList>
+            <TabsContent value="signin">
+              <Form {...signInForm}>
+                <form onSubmit={signInForm.handleSubmit(handleSignIn)} className="space-y-4 pt-4">
+                  <FormField
+                    control={signInForm.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email</FormLabel>
+                        <FormControl>
+                          <Input type="email" placeholder="you@example.com" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={signInForm.control}
+                    name="password"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Password</FormLabel>
+                        <FormControl>
+                          <Input type="password" placeholder="••••••••" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button type="submit" className="w-full" disabled={isLoading}>
+                    {isLoading ? 'Signing In...' : 'Sign In'}
+                  </Button>
+                </form>
+              </Form>
+            </TabsContent>
+            <TabsContent value="signup">
+              <Form {...signUpForm}>
+                <form onSubmit={signUpForm.handleSubmit(handleSignUp)} className="space-y-4 pt-4">
+                  <FormField
+                    control={signUpForm.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Name</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Your Name" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={signUpForm.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email</FormLabel>
+                        <FormControl>
+                          <Input type="email" placeholder="you@example.com" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={signUpForm.control}
+                    name="password"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Password</FormLabel>
+                        <FormControl>
+                          <Input type="password" placeholder="••••••••" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button type="submit" className="w-full" disabled={isLoading}>
+                    {isLoading ? 'Creating Account...' : 'Create Account'}
+                  </Button>
+                </form>
+              </Form>
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
     </div>
