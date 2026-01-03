@@ -14,6 +14,7 @@ import {
   type ChartConfig,
 } from '@/components/ui/chart';
 import { parseISO, format } from 'date-fns';
+import { useMemo } from 'react';
 
 type ChartData = { date: string; progress: number }[];
 
@@ -31,6 +32,12 @@ const chartConfig = {
 } satisfies ChartConfig;
 
 export function StreakChart({ data, title, dateFormat }: StreakChartProps) {
+  const yAxisDomain = useMemo(() => {
+    const maxProgress = Math.max(...data.map(item => item.progress), 0);
+    const topValue = Math.max(1, Math.ceil(maxProgress * 1.2)); // Ensure domain is at least 1, with a 20% buffer
+    return [0, topValue];
+  }, [data]);
+  
   return (
     <Card>
       <CardHeader>
@@ -56,7 +63,7 @@ export function StreakChart({ data, title, dateFormat }: StreakChartProps) {
               axisLine={false}
               tickMargin={10}
               label={{ value: 'Hours', angle: -90, position: 'insideLeft', offset: -5 }}
-              domain={[0, 24]}
+              domain={yAxisDomain}
             />
             <Tooltip
               cursor={false}
