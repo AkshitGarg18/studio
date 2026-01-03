@@ -92,6 +92,9 @@ export function Dashboard() {
     return [...progressHistory].sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
   }, [progressHistory]);
 
+  const chartData7Days = useMemo(() => generateChartData(sortedHistory, 7), [sortedHistory]);
+  const chartData30Days = useMemo(() => generateChartData(sortedHistory, 30), [sortedHistory]);
+
   useEffect(() => {
     if (!userProfile || !sortedHistory) {
       setStreakEndTime(null);
@@ -119,16 +122,18 @@ export function Dashboard() {
   };
 
   const handleProgressSubmit = async (data: { progress: number; activity: string; subject: string }) => {
-    if (!user || !firestore || !userProfile) return;
+    if (!user || !firestore || !userProfile || !progressHistoryRef) return;
   
     const todayStr = format(new Date(), 'yyyy-MM-dd');
     const lastEntry = sortedHistory.length > 0 ? sortedHistory[0] : null;
     let newStreak = userProfile.currentStreak;
   
-    const progressQuery = query(progressHistoryRef!, where('date', '==', todayStr));
-    const todayEntries = await getDocs(progressQuery);
-    const existingTodayEntry = todayEntries.docs.length > 0 ? { id: todayEntries.docs[0].id, ...todayEntries.docs[0].data() } as ProgressEntry : null;
-  
+    const progressQuery = query(progressHistoryRef, where('date', '==', todayStr));
+    const todayEntriesSnapshot = await getDocs(progressQuery);
+    const existingTodayEntry = todayEntriesSnapshot.docs.length > 0 
+      ? { id: todayEntriesSnapshot.docs[0].id, ...todayEntriesSnapshot.docs[0].data() } as ProgressEntry 
+      : null;
+      
     if (!existingTodayEntry) {
       // No entry for today, this is a new log for the day
       if (lastEntry) {
@@ -206,7 +211,7 @@ export function Dashboard() {
         updateDocumentNonBlocking(progressDocRef, updatedProgressData);
     } else {
         const newProgressEntry = { date: todayStr, ...data, userId: user.uid };
-        addDocumentNonBlocking(progressHistoryRef!, newProgressEntry);
+        addDocumentNonBlocking(progressHistoryRef, newProgressEntry);
     }
     
     const userProfileUpdate = {
@@ -336,8 +341,6 @@ export function Dashboard() {
     );
   }
 
-  const chartData7Days = generateChartData(sortedHistory, 7);
-  const chartData30Days = generateChartData(sortedHistory, 30);
   const longestStreakEmoji = (userProfile?.longestStreak ?? 0) > 10 ? '🏆' : (userProfile?.longestStreak ?? 0) > 5 ? '🏅' : '🎉';
   const lastLogDate = sortedHistory.length > 0 ? sortedHistory[0].date : null;
 
